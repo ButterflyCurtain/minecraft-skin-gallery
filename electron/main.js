@@ -7,7 +7,9 @@ const { scanSkins, inspect } = require('./skins');
 const launcher = require('./launcher');
 const auth = require('./auth');
 
-const APP_DIR = path.join(__dirname, '..');          // index.html / *.png があるフォルダ
+// スキンを探すフォルダ。開発時はプロジェクト直下、パッケージ後はexeを置いたフォルダ
+// （ポータブルexeをスキン用フォルダに置いて起動する想定）。
+const APP_DIR = app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..');
 const DOWNLOADS_DIR = path.dirname(APP_DIR);          // 親フォルダ = ダウンロード想定
 const USERDATA = path.join(APP_DIR, 'skin-gallery-userdata.json');
 
@@ -20,7 +22,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.removeMenu();
-  win.loadFile(path.join(APP_DIR, 'index.html'));
+  win.loadFile(path.join(__dirname, '..', 'index.html'));  // バンドル側のUI（パッケージ後はasar内）
   watchDownloads();
 }
 

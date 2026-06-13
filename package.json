@@ -5,10 +5,36 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
+    "dist": "electron-builder --win",
     "test:scan": "node electron/skins.js .",
     "test:launcher": "node electron/launcher.js --list"
   },
   "devDependencies": {
-    "electron": "^31.0.0"
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.skingallery.app",
+    "productName": "SkinGallery",
+    "files": [
+      "electron/**/*",
+      "index.html",
+      "skinview3d.bundle.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "portable": {
+      "artifactName": "SkinGallery-${version}-portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "SkinGallery-${version}-setup.exe"
+    }
   }
 }
