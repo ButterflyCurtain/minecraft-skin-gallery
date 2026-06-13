@@ -1,0 +1,22 @@
+# 依存・キャッシュ
+node_modules/
+__pycache__/
+*.pyc
+
+# 秘密情報・個人データ（絶対にコミットしない）
+electron/auth-tokens.json
+electron/auth-config.json
+skin-gallery-userdata.json
+
+# バックアップ
+*.bak
+launcher_custom_skins.json.*.bak
+
+# スキン画像・生成データ（コードのみのリポにするため除外。各自 gen.py / アプリで生成）
+*.png
+skins-data.js
+skins.json
+
+# OS
+Thumbs.db
+.DS_Store

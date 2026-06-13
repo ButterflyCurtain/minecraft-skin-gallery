@@ -1,0 +1,14 @@
+{
+  "name": "skin-gallery",
+  "version": "1.0.0",
+  "description": "Minecraft skin gallery — 3Dビューア・整理・ランチャー連携",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test:scan": "node electron/skins.js .",
+    "test:launcher": "node electron/launcher.js --list"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}
