@@ -1,6 +1,7 @@
 # 依存・キャッシュ・ビルド出力
 node_modules/
 dist/
+*.exe
 __pycache__/
 *.pyc
 

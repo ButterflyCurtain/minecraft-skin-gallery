@@ -748,6 +748,30 @@
                 font-size: 11px;
                 color: var(--txt-faint);
             }
+            .warn-check {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin: 16px 0 4px;
+                font-size: 12px;
+                color: var(--txt-dim);
+                cursor: pointer;
+            }
+            .warn-actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 10px;
+                margin-top: 14px;
+            }
+            .btn.ghost {
+                background: transparent;
+                border-color: var(--line);
+                color: var(--txt-dim);
+            }
+            .btn.ghost:hover {
+                border-color: var(--line-strong);
+                color: var(--txt);
+            }
 
             .scrim {
                 position: fixed;
@@ -1027,7 +1051,7 @@
                         <button
                             class="iconbtn"
                             id="poseBtn"
-                            title="ポーズ/インスペクト：部位を掴んで動かす（離す=びよん復帰 / Shift離す=固定 / Ctrl二度押し=全解除）"
+                            title="ポーズ/インスペクト：左ドラッグで動かし離すと固定 / 右クリックでその部位を解除 / 空きで右ダブルクリックで全解除"
                             aria-label="ポーズ/インスペクトモード"
                             aria-pressed="false"
                         >
@@ -1302,6 +1326,40 @@
                 ></webview>
                 <div class="nmhint">
                     スキンページの「Download」でPNGを保存すると、このアプリのスキンフォルダに自動取り込みされます。
+                </div>
+            </div>
+        </div>
+
+        <!-- ポーズ全解除の確認 -->
+        <div class="scrim" id="poseWarnScrim">
+            <div
+                class="audit"
+                style="width: min(380px, 92vw)"
+                role="dialog"
+                aria-modal="true"
+                aria-label="ポーズ全解除の確認"
+            >
+                <div class="audit-head"><h2>ポーズを全解除</h2></div>
+                <div class="audit-body" style="padding: 14px 20px 18px">
+                    <div
+                        style="
+                            font-size: 13px;
+                            line-height: 1.7;
+                            color: var(--txt-dim);
+                        "
+                    >
+                        固定したポーズをすべて解除して、元の位置へ戻します。よろしいですか？
+                    </div>
+                    <label class="warn-check">
+                        <input type="checkbox" id="poseWarnSkip" />
+                        次回以降表示しない
+                    </label>
+                    <div class="warn-actions">
+                        <button class="btn ghost" id="poseWarnCancel">
+                            キャンセル
+                        </button>
+                        <button class="btn" id="poseWarnOk">全解除</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1736,6 +1794,7 @@
                     sidebarW: 312,
                     autoBg: true,
                     controlsH: 0,
+                    skipPoseWarn: false,
                 }; // controlsH:0=自動高さ
                 try {
                     Object.assign(
@@ -1842,8 +1901,6 @@
                     wPitP = 0,
                     renderT = 0;
                 let physicsSettleUntil = 0; // スキン読み込み直後はこの時刻まで物理を当てない（連続送りで毎回挟まないため）
-                let animFade = null; // 動作切替のクロスフェード状態 {t0, from:{部位:{x,y,z}}}
-                const ANIM_FADE_MS = 320; // 切替補間時間
                 let navLast = 0; // 矢印キー送りのスロットル（長押しで速すぎないように）
                 const NAV_INTERVAL = 150; // 連続送りの最小間隔(ms)
                 const wrapPI = (d) => {
@@ -2003,10 +2060,9 @@
                     });
                 }
 
-                // ---- ポーズ/インスペクト：部位を掴んで動かす。離すと固定 or びよん復帰。Shift固定/Ctrl二度押しで全解除。----
-                // 慣性とは排他（poseMode中はrenderでこちらを実行）。applied[n] に載せるので restorePose が累積を防ぐ。
-                // TODO: 操作の更新。はい、
-                // ドラッグしながら左クリックでその部位をその位置に固定、固定した部位を選択しながらドラッグで調整、固定した部位を選択しながら右クリック単押しでその部位だけ解除、キャラに触れず後ろの何もない空間をクリックして、右ダブルクリック（たたんっ てやつ）で全解除。はい　全解除の前に警告出すけど「次回以降表示しない」のチェックも用意。
+                // ---- ポーズ/インスペクト：左ドラッグで部位を動かし、離すとその位置で固定。
+                //   右クリック＝その部位だけ解除（びよん）。空きで右ダブルクリック＝全解除（警告＋次回非表示あり）。
+                //   慣性とは排他（poseMode中はrenderでこちらを実行）。applied[n] に載せるので restorePose が累積を防ぐ。
                 const poseBtn = $("poseBtn");
                 const POSE_LIMBS = [
                     "head",
@@ -2056,8 +2112,10 @@
                 let poseMode = false,
                     grabbed = null,
                     grabStart = null,
-                    lastCtrl = 0,
-                    posePrevAnim = null;
+                    lastEmptyRight = 0,
+                    posePrevAnim = null,
+                    bodyPivotY = -12, // ボディ掴み時の支点(上半分=腰-12 / 下半分=肩-3)
+                    bodyGrabSign = 1; // ボディ下半分は引っ張り向きに合わせ符号反転
                 const poseCur = {},
                     poseTarget = {},
                     poseFixed = {};
@@ -2137,22 +2195,47 @@
                         dy = ev.clientY - grabStart.y;
                     const map = POSE_MAP[grabbed],
                         base = grabStart.base;
+                    const sign = grabbed === "body" ? bodyGrabSign : 1;
                     ["x", "y", "z"].forEach((ax) => {
                         const m = map[ax];
                         if (!m) return;
                         const d = m.from === "dx" ? dx : dy;
                         poseTarget[grabbed][ax] = clampN(
-                            base[ax] + d * m.k,
+                            base[ax] + d * m.k * sign,
                             m.lo,
                             m.hi,
                         );
                     });
+                }
+                // ボディは大きいので、掴んだ高さで上半分/下半分を判定し支点と向きを変える。
+                function setBodyGrabHalf(cx, cy) {
+                    const sk = viewer.playerObject && viewer.playerObject.skin;
+                    if (!sk || !sk.body) return;
+                    const cam = viewer.camera,
+                        rect = wrap.getBoundingClientRect();
+                    const v = cam.position.clone();
+                    v.set(0, 0, 0);
+                    sk.body.localToWorld(v);
+                    v.project(cam);
+                    const sy = rect.top + (-v.y * 0.5 + 0.5) * rect.height; // ボディ中心の画面Y
+                    const lower = cy > sy; // 画面下＝体の下半分（お尻側）
+                    bodyPivotY = lower ? -3 : -12; // 下=肩支点でお尻が振れる / 上=腰支点で上が傾く
+                    bodyGrabSign = lower ? -1 : 1;
                 }
                 function releaseAllPoses() {
                     POSE_LIMBS.forEach((n) => {
                         poseFixed[n] = false;
                         poseTarget[n] = { x: 0, y: 0, z: 0 };
                     });
+                }
+                function requestReleaseAll() {
+                    if (settings.skipPoseWarn) {
+                        releaseAllPoses();
+                        return;
+                    }
+                    const s = $("poseWarnScrim");
+                    if (s) s.classList.add("show");
+                    else releaseAllPoses();
                 }
                 function setPoseMode(on) {
                     poseMode = on;
@@ -2187,66 +2270,91 @@
                         if (autoRotateWanted) resumeAutoRotateEased();
                     }
                 }
-                // capture段のpointerdownで拾い、部位を掴んだ時だけ OrbitControls(pointer系)を止める（空きはオービットに任せる）
+                // capture段のpointerdownで拾う。左=掴んで動かす(離すと固定)／右=部位なら解除・空きならダブルで全解除。
                 wrap.addEventListener(
                     "pointerdown",
                     (ev) => {
-                        if (!poseMode || ev.button !== 0) return;
+                        if (!poseMode) return;
                         const part = pickPart(ev.clientX, ev.clientY);
-                        if (!part) return;
-                        grabbed = part;
-                        grabStart = {
-                            x: ev.clientX,
-                            y: ev.clientY,
-                            // 現在の見た目位置から続ける（前回離した位置から始まらないように）
-                            base: {
-                                x: poseCur[part].x.p,
-                                y: poseCur[part].y.p,
-                                z: poseCur[part].z.p,
-                            },
-                            wasFixed: poseFixed[part],
-                        };
-                        poseFixed[part] = true;
-                        viewer.controls.enabled = false;
-                        wrap.classList.add("grabbing");
-                        try {
-                            wrap.setPointerCapture(ev.pointerId);
-                        } catch (_) {}
-                        ev.preventDefault();
-                        ev.stopImmediatePropagation();
+                        if (ev.button === 0) {
+                            if (!part) return; // 空きの左ドラッグはオービットに任せる
+                            grabbed = part;
+                            grabStart = {
+                                x: ev.clientX,
+                                y: ev.clientY,
+                                // 現在の見た目位置から続ける（前回の位置から飛ばない）
+                                base: {
+                                    x: poseCur[part].x.p,
+                                    y: poseCur[part].y.p,
+                                    z: poseCur[part].z.p,
+                                },
+                            };
+                            if (part === "body")
+                                setBodyGrabHalf(ev.clientX, ev.clientY);
+                            poseFixed[part] = true; // 掴んでいる間は保持（離すとその位置で固定）
+                            viewer.controls.enabled = false;
+                            wrap.classList.add("grabbing");
+                            try {
+                                wrap.setPointerCapture(ev.pointerId);
+                            } catch (_) {}
+                            ev.preventDefault();
+                            ev.stopImmediatePropagation();
+                        } else if (ev.button === 2) {
+                            if (part) {
+                                // 部位を右クリック＝その部位だけ解除（びよん）
+                                poseFixed[part] = false;
+                                poseTarget[part] = { x: 0, y: 0, z: 0 };
+                            } else {
+                                // 空きで右ダブルクリック＝全解除（たたんっ）
+                                const t = performance.now();
+                                if (t - lastEmptyRight < 450) {
+                                    lastEmptyRight = 0;
+                                    requestReleaseAll();
+                                } else lastEmptyRight = t;
+                            }
+                            ev.preventDefault();
+                            ev.stopImmediatePropagation();
+                        }
                     },
                     true,
                 );
                 window.addEventListener("pointermove", (ev) => {
                     if (grabbed) setGrabTarget(ev);
                 });
-                window.addEventListener("pointerup", (ev) => {
+                window.addEventListener("pointerup", () => {
                     if (!grabbed) return;
-                    // Shift=固定のトグル / 修飾なし=固定状態を維持（固定済みは調整しても固定のまま）
-                    poseFixed[grabbed] = ev.shiftKey
-                        ? !grabStart.wasFixed
-                        : grabStart.wasFixed;
-                    // 未固定なら目標を0へ（離すと元の位置へびよん戻り・再掴みも0から）
-                    if (!poseFixed[grabbed])
-                        poseTarget[grabbed] = { x: 0, y: 0, z: 0 };
+                    poseFixed[grabbed] = true; // 離した位置で固定
                     grabbed = null;
                     viewer.controls.enabled = true;
                     wrap.classList.remove("grabbing");
+                });
+                // ポーズ中はブラウザの右クリックメニューを抑止
+                wrap.addEventListener("contextmenu", (ev) => {
+                    if (poseMode) ev.preventDefault();
                 });
                 if (poseBtn)
                     poseBtn.addEventListener("click", () =>
                         setPoseMode(!poseMode),
                     );
-                document.addEventListener("keydown", (ev) => {
-                    // Ctrl 二度押しでポーズ全解除（びよん）
-                    if (ev.key === "Control") {
-                        const t = performance.now();
-                        if (t - lastCtrl < 400) {
-                            releaseAllPoses();
-                            lastCtrl = 0;
-                        } else lastCtrl = t;
-                    }
-                });
+                // ポーズ全解除の確認モーダル
+                (function () {
+                    const scrim = $("poseWarnScrim");
+                    if (!scrim) return;
+                    $("poseWarnOk").addEventListener("click", () => {
+                        if ($("poseWarnSkip").checked) {
+                            settings.skipPoseWarn = true;
+                            saveSettings();
+                        }
+                        scrim.classList.remove("show");
+                        releaseAllPoses();
+                    });
+                    $("poseWarnCancel").addEventListener("click", () =>
+                        scrim.classList.remove("show"),
+                    );
+                    scrim.addEventListener("click", (ev) => {
+                        if (ev.target === scrim) scrim.classList.remove("show");
+                    });
+                })();
 
                 viewer.render = ((base) => () => {
                     const now = performance.now();
@@ -2290,23 +2398,10 @@
                         prop: m.legProp,
                     };
                     const sk = viewer.playerObject && viewer.playerObject.skin;
-                    // 動作切替のクロスフェード：凍結した旧ポーズ → 新アニメへ重み付き補間（両方向）。
-                    if (sk && animFade) {
-                        const w = Math.min(1, (now - animFade.t0) / ANIM_FADE_MS);
-                        ["body", "leftArm", "rightArm", "leftLeg", "rightLeg", "head"].forEach((n) => {
-                            const p = sk[n],
-                                f = animFade.from[n];
-                            if (!p || !f) return;
-                            p.rotation.x = f.x + (p.rotation.x - f.x) * w;
-                            p.rotation.y = f.y + (p.rotation.y - f.y) * w;
-                            p.rotation.z = f.z + (p.rotation.z - f.z) * w;
-                        });
-                        if (w >= 1) animFade = null;
-                    }
                     if (sk && dt > 0 && now >= physicsSettleUntil && poseMode) {
                         // ポーズ/インスペクト：慣性とは排他。掴んだ部位を動かし、離すと固定 or びよん復帰。
                         applyPoseFrame(sk, dt);
-                        applyPositionFollow(sk, true);   // 体を動かすと腕・脚・頭も位置追従（肉体として動く）
+                        applyPositionFollow(sk, true, bodyPivotY); // 体を動かすと腕・脚・頭も追従。ボディ上下半分で支点可変
                     } else if (sk && dt > 0 && now >= physicsSettleUntil) {
                         // 体を先に積分 → そのオフセットを頭・腕・脚へ伝播（連鎖スプリングボーン）
                         if (sk.body)
@@ -2424,18 +2519,9 @@
                     fly: () => new skinview3d.FlyingAnimation(),
                     none: () => null,
                 };
-                // 動作切替のクロスフェード（applyAnim で旧ポーズ凍結→render で ANIM_FADE_MS 補間）。
+                // 動作切替は即時（クロスフェードは廃止：前の動作が次に残る感じを避けるため）。
                 function applyAnim() {
                     const f = ANIMS[animSel.value] || ANIMS.walk;
-                    // クロスフェード：今表示中のポーズを凍結し、新アニメへ補間（両方向のイーズ）
-                    const sk = viewer.playerObject && viewer.playerObject.skin;
-                    if (sk) {
-                        animFade = { t0: performance.now(), from: {} };
-                        ["body", "leftArm", "rightArm", "leftLeg", "rightLeg", "head"].forEach((n) => {
-                            const p = sk[n];
-                            if (p) animFade.from[n] = { x: p.rotation.x, y: p.rotation.y, z: p.rotation.z };
-                        });
-                    }
                     viewer.animation = f();
                     if (viewer.animation) viewer.animation.speed = 1;
                 }
@@ -3475,9 +3561,12 @@
                 });
                 document.addEventListener("keydown", (ev) => {
                     if (ev.key === "Escape") {
-                        const nmS = $("namemcScrim");
+                        const nmS = $("namemcScrim"),
+                            pwS = $("poseWarnScrim");
                         if (!ctxEl.classList.contains("hidden"))
                             closeContextMenu();
+                        else if (pwS && pwS.classList.contains("show"))
+                            pwS.classList.remove("show");
                         else if (nmS && nmS.classList.contains("show"))
                             nmS.classList.remove("show");
                         else if (settingsScrim.classList.contains("show"))
