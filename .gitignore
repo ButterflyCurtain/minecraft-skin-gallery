@@ -18,6 +18,8 @@ launcher_custom_skins.json.*.bak
 *.png
 skins-data.js
 skins.json
+# ただし docs/ の画像（サンプルスキン・スクショ）は追跡する
+!docs/*.png
 
 # OS
 Thumbs.db
