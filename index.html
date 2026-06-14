@@ -1897,6 +1897,16 @@
                         legProp: 0.35,
                     },
                 };
+                // 空中モードの“だらん”姿勢（重力で垂れる・猫背・尾てい骨で吊られた感じ）。各軸rad。
+                // x=前後（+で前傾/うつむき=猫背）, z=左右（腕は外開き符号）。inertiaに上乗せの静的バイアス。
+                const AIR_DROOP = {
+                    head: { x: 0.34, y: 0, z: 0 }, // うつむく
+                    body: { x: 0.16, y: 0, z: 0 }, // 背を丸める
+                    leftArm: { x: 0.22, y: 0, z: 0.06 }, // 前へだらん
+                    rightArm: { x: 0.22, y: 0, z: -0.06 },
+                    leftLeg: { x: 0.12, y: 0, z: 0.03 }, // 脚も力なく前へ
+                    rightLeg: { x: 0.12, y: 0, z: -0.03 },
+                };
                 const limbNames = Object.keys(JOINT);
                 const AXES = ["x", "y", "z"];
                 const sp = {}; // sp[part][axis] = {p,v} バネ状態
@@ -2482,6 +2492,24 @@
                         if (sk.head) {
                             sk.head.rotation.y = gazeYaw + hy;
                             sk.head.rotation.x = gazePitch + hx;
+                        }
+                        // 空中モード：重力で“だらん”と垂れる静的バイアス（猫背・手足が前へ）を上乗せ
+                        if (settings.inertiaMode === "air") {
+                            limbNames.forEach((n) => {
+                                const p = sk[n],
+                                    d = AIR_DROOP[n];
+                                if (!p || !d) return;
+                                p.rotation.x += d.x;
+                                p.rotation.y += d.y;
+                                p.rotation.z += d.z;
+                                applied[n].x += d.x;
+                                applied[n].y += d.y;
+                                applied[n].z += d.z;
+                            });
+                            if (sk.head && AIR_DROOP.head) {
+                                sk.head.rotation.x += AIR_DROOP.head.x;
+                                sk.head.rotation.y += AIR_DROOP.head.y;
+                            }
                         }
                         applyPositionFollow(
                             sk,

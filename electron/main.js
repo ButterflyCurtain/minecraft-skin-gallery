@@ -20,13 +20,13 @@ function resolveSkinDir() {
     const d = JSON.parse(fs.readFileSync(skinDirConfigPath(), 'utf-8')).dir;
     if (d && fs.existsSync(d)) return d;
   } catch (_) {}
-  const def = path.join(app.getPath('downloads'), 'minecraft-skins');
+  // 既定はアプリ名の汎用フォルダ（画像なので Pictures）。既存フォルダは「📂 変更」で指定→設定保存。
+  const def = path.join(app.getPath('pictures'), 'SkinGallery');
   try { fs.mkdirSync(def, { recursive: true }); } catch (_) {}
   return def;
 }
-function setSkinDir(dir) {
+function setSkinDir(dir) {           // DOWNLOADS_DIR は触らない（取り込み監視は実Downloadsで独立）
   APP_DIR = dir;
-  DOWNLOADS_DIR = path.dirname(APP_DIR);
   USERDATA = path.join(APP_DIR, 'skin-gallery-userdata.json');
 }
 function saveSkinDirConfig(dir) { try { fs.writeFileSync(skinDirConfigPath(), JSON.stringify({ dir })); } catch (_) {} }
@@ -170,6 +170,11 @@ ipcMain.handle('dir:choose', async () => {
   return { ok: true, dir: APP_DIR, skins, registry, userdata: readUserData() };
 });
 
-app.whenReady().then(() => { setSkinDir(resolveSkinDir()); setupNamemcSession(); createWindow(); });
+app.whenReady().then(() => {
+  DOWNLOADS_DIR = app.getPath('downloads');   // 取り込み監視は常に実Downloads（スキンフォルダと独立）
+  setSkinDir(resolveSkinDir());
+  setupNamemcSession();
+  createWindow();
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
