@@ -553,7 +553,7 @@
                 align-items: center;
                 align-content: flex-start;
                 gap: 18px;
-                padding: 14px 24px 22px;
+                padding: 14px 24px 34px;
                 border-top: 1px solid var(--line);
                 flex-shrink: 0;
                 flex-wrap: wrap;
@@ -1930,13 +1930,15 @@
                 };
                 // 空中モードの“だらん”姿勢（重力で垂れる・猫背・尾てい骨で吊られた感じ）。各軸rad。
                 // x=前後（+で前傾/うつむき=猫背）, z=左右（腕は外開き符号）。inertiaに上乗せの静的バイアス。
+                // 尾てい骨で吊られた“柔らかいC字カール（エビ）”。頭は深くうつむき、脚は前へ畳んで、
+                // 腕はだらんと内に。各部位に角度差をつけて曲線に見せる（剛体だが連続した曲がりに）。
                 const AIR_DROOP = {
-                    head: { x: 0.34, y: 0, z: 0 }, // うつむく
-                    body: { x: 0.16, y: 0, z: 0 }, // 背を丸める
-                    leftArm: { x: 0.22, y: 0, z: 0.06 }, // 前へだらん
-                    rightArm: { x: 0.22, y: 0, z: -0.06 },
-                    leftLeg: { x: 0.12, y: 0, z: 0.03 }, // 脚も力なく前へ
-                    rightLeg: { x: 0.12, y: 0, z: -0.03 },
+                    head: { x: 0.5, y: 0, z: 0 }, // 深くうつむく（カールの上端）
+                    body: { x: 0.3, y: 0, z: 0 }, // 背を丸める
+                    leftArm: { x: 0.28, y: 0, z: 0.12 }, // だらんと前・内へ
+                    rightArm: { x: 0.28, y: 0, z: -0.12 },
+                    leftLeg: { x: 0.5, y: 0, z: 0.05 }, // 前へ畳む（カールの下端＝エビ）
+                    rightLeg: { x: 0.5, y: 0, z: -0.05 },
                 };
                 const limbNames = Object.keys(JOINT);
                 const AXES = ["x", "y", "z"];
@@ -2026,7 +2028,7 @@
                 const GROUND_PIVOT_Y = -3; // 地面慣性の支点(ワールドY)。上寄り＝お尻/腰が振れるボトムヘビー(B)
                 const AIR_PIVOT_Y = -12; // 空中の支点＝尾てい骨/腰。ここを吊り点に各部位が繋がったまま重力で垂れる
                 // pivotY=支点のワールドY（既定 -12=腰/底面。上げるほどお尻が振れる）
-                function applyPositionFollow(sk, ground, pivotY) {
+                function applyPositionFollow(sk, ground, pivotY, fullFollow) {
                     if (!sk.body) return;
                     if (pivotY == null) pivotY = -12;
                     if (ground) {
@@ -2041,11 +2043,12 @@
                             bb.z - rw[2],
                         );
                         // 他部位：支点まわりの回転による接合点移動ぶんだけ平行移動（回転は独立＝フロート維持）
+                        // fullFollow=完全追従(隙間ゼロ。空中の吊られ curl 用) / 通常は FOLLOW_K（接地の足残し等）
                         FOLLOW.forEach((n) => {
                             const p = sk[n];
                             if (!p) return;
                             const b = getBase(p),
-                                k = FOLLOW_K[n] || 1;
+                                k = fullFollow ? 1 : FOLLOW_K[n] || 1;
                             const ax = b.x,
                                 ay = b.y - pivotY,
                                 az = b.z;
@@ -2548,13 +2551,14 @@
                                 sk.head.rotation.y += AIR_DROOP.head.y;
                             }
                         }
-                        // 接地/空中とも位置追従ON（各部位が繋がる）。支点だけ切替：接地=肩寄り(お尻が振れる) / 空中=尾てい骨(吊られて垂れる)
+                        // 接地/空中とも位置追従ON（各部位が繋がる）。支点切替：接地=肩寄り(お尻が振れる) / 空中=尾てい骨(吊られて垂れる)
+                        // 空中はフル追従(隙間ゼロ)で吊られ curl をきれいに繋ぐ。接地は FOLLOW_K で足を床寄りに残す。
+                        const _air = settings.inertiaMode !== "ground";
                         applyPositionFollow(
                             sk,
                             true,
-                            settings.inertiaMode === "ground"
-                                ? GROUND_PIVOT_Y
-                                : AIR_PIVOT_Y,
+                            _air ? AIR_PIVOT_Y : GROUND_PIVOT_Y,
+                            _air,
                         );
                     } else if (sk) {
                         // 読み込み直後のひと呼吸（or 静止）：物理は当てず素のポーズ。復帰時にスナップしないよう状態を0へ。
