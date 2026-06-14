@@ -13,8 +13,6 @@ const APP_DIR = app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__
 const DOWNLOADS_DIR = path.dirname(APP_DIR);          // 親フォルダ = ダウンロード想定
 const USERDATA = path.join(APP_DIR, 'skin-gallery-userdata.json');
 
-// TODO(4): README/LICENSE 整備（公開準備）。
-
 // ---- namemc 埋め込み(<webview partition="persist:namemc">)用セッション：広告ブロック＋DLをスキンdirへ ----
 let adblockOn = false;   // 既定OFF（iframe先への配慮）。UIのトグルで切替。
 const AD_HOSTS = [

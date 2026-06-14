@@ -2424,8 +2424,7 @@
                     fly: () => new skinview3d.FlyingAnimation(),
                     none: () => null,
                 };
-                // 動作切替のクロスフェード実装済み（applyAnim で旧ポーズ凍結→render で ANIM_FADE_MS 補間）。
-                // TODO(4): 公開準備として README 更新 / LICENSE(MIT) 追加。
+                // 動作切替のクロスフェード（applyAnim で旧ポーズ凍結→render で ANIM_FADE_MS 補間）。
                 function applyAnim() {
                     const f = ANIMS[animSel.value] || ANIMS.walk;
                     // クロスフェード：今表示中のポーズを凍結し、新アニメへ補間（両方向のイーズ）
