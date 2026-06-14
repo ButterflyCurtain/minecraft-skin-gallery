@@ -709,6 +709,46 @@
                 color: var(--accent);
             }
 
+            /* ---- namemc ブラウザ ---- */
+            .nmwrap {
+                width: min(1100px, 94vw);
+                height: min(82vh, 840px);
+                background: var(--panel);
+                border: 1px solid var(--line-strong);
+                border-radius: 12px;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            .nmbar {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 9px 12px;
+                border-bottom: 1px solid var(--line);
+            }
+            .nmbar .nmurl {
+                flex: 1;
+                min-width: 0;
+                font-size: 11px;
+                color: var(--txt-faint);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            #nmView {
+                flex: 1;
+                width: 100%;
+                border: none;
+                background: #fff;
+            }
+            .nmhint {
+                padding: 8px 12px;
+                border-top: 1px solid var(--line);
+                font-size: 11px;
+                color: var(--txt-faint);
+            }
+
             .scrim {
                 position: fixed;
                 inset: 0;
@@ -922,6 +962,15 @@
                         hidden
                     >
                         ⟳ 取り込み
+                    </button>
+                    <button
+                        class="linkbtn elec"
+                        id="namemcBtn"
+                        title="namemc でスキンを探す（DLでこのフォルダに自動取り込み）"
+                        aria-label="namemc スキンブラウザを開く"
+                        hidden
+                    >
+                        ◍ namemc
                     </button>
                     <input
                         type="file"
@@ -1207,6 +1256,52 @@
                             <span class="dot"></span>自動
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- namemc スキンブラウザ（Electronのみ・webview） -->
+        <div class="scrim" id="namemcScrim">
+            <div
+                class="nmwrap"
+                role="dialog"
+                aria-modal="true"
+                aria-label="namemc スキンブラウザ"
+            >
+                <div class="nmbar">
+                    <button class="iconbtn" id="nmBack" title="戻る" aria-label="戻る">‹</button>
+                    <button class="iconbtn" id="nmFwd" title="進む" aria-label="進む">›</button>
+                    <button class="iconbtn" id="nmHome" title="namemc ホーム" aria-label="ホーム">⌂</button>
+                    <button class="iconbtn" id="nmReload" title="再読み込み" aria-label="再読み込み">⟳</button>
+                    <span class="nmurl" id="nmUrl">namemc</span>
+                    <button
+                        class="toggle"
+                        id="nmAdblock"
+                        role="switch"
+                        aria-checked="false"
+                        aria-label="広告ブロック"
+                        title="広告ブロック（既定オフ・サイトへの配慮）"
+                    >
+                        <span class="dot"></span>広告ブロック
+                    </button>
+                    <span
+                        class="x"
+                        id="namemcClose"
+                        role="button"
+                        tabindex="0"
+                        title="閉じる（Esc）"
+                        aria-label="閉じる"
+                        >✕</span
+                    >
+                </div>
+                <webview
+                    id="nmView"
+                    partition="persist:namemc"
+                    src="https://ja.namemc.com/minecraft-skins"
+                    allowpopups
+                ></webview>
+                <div class="nmhint">
+                    スキンページの「Download」でPNGを保存すると、このアプリのスキンフォルダに自動取り込みされます。
                 </div>
             </div>
         </div>
@@ -3379,8 +3474,11 @@
                 });
                 document.addEventListener("keydown", (ev) => {
                     if (ev.key === "Escape") {
+                        const nmS = $("namemcScrim");
                         if (!ctxEl.classList.contains("hidden"))
                             closeContextMenu();
+                        else if (nmS && nmS.classList.contains("show"))
+                            nmS.classList.remove("show");
                         else if (settingsScrim.classList.contains("show"))
                             closeSettings();
                         else if (scrim.classList.contains("show"))
@@ -3650,6 +3748,46 @@
                                 );
                             });
                         });
+                    // ---- namemc ブラウザ（webview） ----
+                    const nmScrim = $("namemcScrim"),
+                        nmView = $("nmView"),
+                        nmUrl = $("nmUrl"),
+                        nmAdblock = $("nmAdblock"),
+                        namemcBtn = $("namemcBtn");
+                    const NM_HOME = "https://ja.namemc.com/minecraft-skins";
+                    if (namemcBtn)
+                        namemcBtn.addEventListener("click", () =>
+                            nmScrim.classList.add("show"),
+                        );
+                    $("namemcClose").addEventListener("click", () =>
+                        nmScrim.classList.remove("show"),
+                    );
+                    nmScrim.addEventListener("click", (ev) => {
+                        if (ev.target === nmScrim) nmScrim.classList.remove("show");
+                    });
+                    $("nmBack").addEventListener("click", () => {
+                        if (nmView.canGoBack && nmView.canGoBack()) nmView.goBack();
+                    });
+                    $("nmFwd").addEventListener("click", () => {
+                        if (nmView.canGoForward && nmView.canGoForward())
+                            nmView.goForward();
+                    });
+                    $("nmHome").addEventListener("click", () =>
+                        nmView.loadURL(NM_HOME),
+                    );
+                    $("nmReload").addEventListener("click", () => nmView.reload());
+                    const onNav = (e) => {
+                        if (e && e.url) nmUrl.textContent = e.url;
+                    };
+                    nmView.addEventListener("did-navigate", onNav);
+                    nmView.addEventListener("did-navigate-in-page", onNav);
+                    nmAdblock.addEventListener("click", () => {
+                        const on = !nmAdblock.classList.contains("on");
+                        nmAdblock.classList.toggle("on", on);
+                        nmAdblock.setAttribute("aria-checked", on ? "true" : "false");
+                        if (E.setAdblock) E.setAdblock(on);
+                        nmView.reload();
+                    });
                 }
 
                 // ---- 背景の自動調整：スキンの明暗を見て背景色を決める（暗い→うっすら灰 / 明るい→黒 / 混在→黒地にうっすら灰） ----

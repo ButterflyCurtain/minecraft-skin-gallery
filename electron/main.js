@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -13,11 +13,42 @@ const APP_DIR = app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__
 const DOWNLOADS_DIR = path.dirname(APP_DIR);          // 親フォルダ = ダウンロード想定
 const USERDATA = path.join(APP_DIR, 'skin-gallery-userdata.json');
 
-// TODO(3): namemc ブラウズ→DLしたスキンを APP_DIR(スキンdir)へ投入（Electron専用）。
-//   ・<iframe>はX-Frame-Optionsで不可 → <webview>/WebContentsView で ja.namemc.com を埋め込む。
-//   ・session.webRequest.onBeforeRequest で広告ドメインをネイティブブロック（拡張不要・既定OFF/任意トグル）。
-//   ・session.on('will-download') をフックして保存先を APP_DIR に固定し、完了後 scanSkins で一覧更新。
 // TODO(4): README/LICENSE 整備（公開準備）。
+
+// ---- namemc 埋め込み(<webview partition="persist:namemc">)用セッション：広告ブロック＋DLをスキンdirへ ----
+let adblockOn = false;   // 既定OFF（iframe先への配慮）。UIのトグルで切替。
+const AD_HOSTS = [
+  'doubleclick.net', 'googlesyndication.com', 'googleadservices.com', 'google-analytics.com',
+  'adservice.google.com', 'partner.googleadservices.com', 'fundingchoicesmessages.google.com',
+  'amazon-adsystem.com', 'adnxs.com', 'pubmatic.com', 'rubiconproject.com', 'criteo.com',
+  'taboola.com', 'outbrain.com', 'scorecardresearch.com', 'moatads.com', 'media.net',
+  'ezoic.net', 'ezojs.com', 'adsrvr.org', 'casalemedia.com', 'openx.net', 'smartadserver.com',
+];
+function setupNamemcSession() {
+  const ses = session.fromPartition('persist:namemc');
+  ses.webRequest.onBeforeRequest((details, cb) => {
+    if (adblockOn) {
+      try {
+        const h = new URL(details.url).hostname;
+        if (AD_HOSTS.some(d => h === d || h.endsWith('.' + d))) return cb({ cancel: true });
+      } catch (_) {}
+    }
+    cb({});
+  });
+  // namemc でスキンをDL → APP_DIR(スキンフォルダ)へ保存して一覧更新
+  ses.on('will-download', (_e, item) => {
+    const name = item.getFilename() || 'skin.png';
+    if (!/\.png$/i.test(name)) return;                 // スキン(PNG)だけ取り込む
+    let dst = path.join(APP_DIR, name);
+    if (fs.existsSync(dst)) dst = path.join(APP_DIR, Date.now().toString(36) + '_' + name);
+    item.setSavePath(dst);
+    item.once('done', (_ev, state) => {
+      if (state === 'completed' && win && !win.isDestroyed())
+        win.webContents.send('downloads:changed', { added: 1, file: path.basename(dst) });
+    });
+  });
+}
+ipcMain.handle('adblock:set', (_e, on) => { adblockOn = !!on; return adblockOn; });
 
 let win = null;
 
@@ -25,7 +56,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1280, height: 820, backgroundColor: '#0d0d0f',
     title: 'Skin Gallery',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, webviewTag: true },
   });
   win.removeMenu();
   win.loadFile(path.join(__dirname, '..', 'index.html'));  // バンドル側のUI（パッケージ後はasar内）
@@ -112,6 +143,6 @@ ipcMain.handle('skin:upload', async (_e, { dataUri, slim }) => {
 ipcMain.handle('auth:available', () => auth.hasClientId(APP_DIR));
 ipcMain.handle('open:external', (_e, url) => { shell.openExternal(url); });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => { setupNamemcSession(); createWindow(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
