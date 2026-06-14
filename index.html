@@ -1003,7 +1003,16 @@
                         aria-label="スキンフォルダを開く"
                         hidden
                     >
-                        📁 フォルダ
+                        📁 開く
+                    </button>
+                    <button
+                        class="linkbtn elec"
+                        id="chooseDirBtn"
+                        title="スキンを読み込むフォルダを変更"
+                        aria-label="スキンフォルダを変更"
+                        hidden
+                    >
+                        📂 変更
                     </button>
                     <input
                         type="file"
@@ -3928,6 +3937,32 @@
                         openDirBtn.addEventListener("click", () =>
                             E.openSkinDir(),
                         );
+                    const chooseDirBtn = $("chooseDirBtn");
+                    if (chooseDirBtn && E.chooseSkinDir)
+                        chooseDirBtn.addEventListener("click", () => {
+                            E.chooseSkinDir().then((res) => {
+                                if (!res || !res.ok) return;
+                                const keep =
+                                    current >= 0 ? entries[current].md5 : null;
+                                if (res.userdata) adoptUserData(res.userdata);
+                                build(res.skins, res.registry);
+                                const i = keep
+                                    ? entries.findIndex((e) => e.md5 === keep)
+                                    : -1;
+                                current = i >= 0 ? i : -1;
+                                renderList();
+                                const first = entries.findIndex(
+                                    (e) => e.valid !== false,
+                                );
+                                if (current < 0 && first >= 0) loadSkin(first);
+                                else updateFavBtn();
+                                chooseDirBtn.classList.add("flash");
+                                setTimeout(
+                                    () => chooseDirBtn.classList.remove("flash"),
+                                    1000,
+                                );
+                            });
+                        });
                     // ---- namemc ブラウザ（webview） ----
                     const nmScrim = $("namemcScrim"),
                         nmView = $("nmView"),

@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -7,11 +7,29 @@ const { scanSkins, inspect } = require('./skins');
 const launcher = require('./launcher');
 const auth = require('./auth');
 
-// スキンを探すフォルダ。開発時はプロジェクト直下、パッケージ後はexeを置いたフォルダ
-// （ポータブルexeをスキン用フォルダに置いて起動する想定）。
-const APP_DIR = app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..');
-const DOWNLOADS_DIR = path.dirname(APP_DIR);          // 親フォルダ = ダウンロード想定
-const USERDATA = path.join(APP_DIR, 'skin-gallery-userdata.json');
+// スキンフォルダの解決:
+//   ポータブル版 … exe を置いたフォルダ（PORTABLE_EXECUTABLE_DIR）
+//   開発         … プロジェクト直下
+//   インストール版 … 保存済み設定 or 既定 %USERPROFILE%\Downloads\minecraft-skins（インストール先は使わない！）
+let APP_DIR, DOWNLOADS_DIR, USERDATA;
+function skinDirConfigPath() { return path.join(app.getPath('userData'), 'skin-dir.json'); }
+function resolveSkinDir() {
+  if (process.env.PORTABLE_EXECUTABLE_DIR) return process.env.PORTABLE_EXECUTABLE_DIR;
+  if (!app.isPackaged) return path.join(__dirname, '..');
+  try {
+    const d = JSON.parse(fs.readFileSync(skinDirConfigPath(), 'utf-8')).dir;
+    if (d && fs.existsSync(d)) return d;
+  } catch (_) {}
+  const def = path.join(app.getPath('downloads'), 'minecraft-skins');
+  try { fs.mkdirSync(def, { recursive: true }); } catch (_) {}
+  return def;
+}
+function setSkinDir(dir) {
+  APP_DIR = dir;
+  DOWNLOADS_DIR = path.dirname(APP_DIR);
+  USERDATA = path.join(APP_DIR, 'skin-gallery-userdata.json');
+}
+function saveSkinDirConfig(dir) { try { fs.writeFileSync(skinDirConfigPath(), JSON.stringify({ dir })); } catch (_) {} }
 
 // ---- namemc 埋め込み(<webview partition="persist:namemc">)用セッション：広告ブロック＋DLをスキンdirへ ----
 let adblockOn = false;   // 既定OFF（iframe先への配慮）。UIのトグルで切替。
@@ -141,7 +159,17 @@ ipcMain.handle('skin:upload', async (_e, { dataUri, slim }) => {
 ipcMain.handle('auth:available', () => auth.hasClientId(APP_DIR));
 ipcMain.handle('open:external', (_e, url) => { shell.openExternal(url); });
 ipcMain.handle('dir:open', () => shell.openPath(APP_DIR));   // スキンフォルダをOSのファイラで開く
+ipcMain.handle('dir:current', () => APP_DIR);
+ipcMain.handle('dir:choose', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'スキンフォルダを選択', defaultPath: APP_DIR, properties: ['openDirectory'],
+  });
+  if (r.canceled || !r.filePaths[0]) return { ok: false };
+  setSkinDir(r.filePaths[0]); saveSkinDirConfig(r.filePaths[0]);
+  const { skins, registry } = scanSkins(APP_DIR);
+  return { ok: true, dir: APP_DIR, skins, registry, userdata: readUserData() };
+});
 
-app.whenReady().then(() => { setupNamemcSession(); createWindow(); });
+app.whenReady().then(() => { setSkinDir(resolveSkinDir()); setupNamemcSession(); createWindow(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

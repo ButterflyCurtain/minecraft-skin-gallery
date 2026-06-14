@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   authAvailable: () => ipcRenderer.invoke('auth:available'),
   openExternal: url => ipcRenderer.invoke('open:external', url),
   openSkinDir: () => ipcRenderer.invoke('dir:open'),
+  currentSkinDir: () => ipcRenderer.invoke('dir:current'),
+  chooseSkinDir: () => ipcRenderer.invoke('dir:choose'),
   setAdblock: on => ipcRenderer.invoke('adblock:set', on),
   onDownloadsChanged: cb => ipcRenderer.on('downloads:changed', (_e, d) => cb(d)),
   onAuthPrompt: cb => ipcRenderer.on('auth:prompt', (_e, p) => cb(p)),
