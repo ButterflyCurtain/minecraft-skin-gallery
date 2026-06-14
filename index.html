@@ -20,7 +20,15 @@ body{background:var(--bg);color:var(--txt);overflow:hidden;
   font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
 .app{display:grid;grid-template-columns:312px 1fr;height:100vh}
 
-.sidebar{display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--line);min-height:0}
+.sidebar{display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--line);min-height:0;position:relative}
+.resizer{position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:6}
+.resizer::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:1px;background:transparent;transition:background .15s}
+.resizer:hover::after,.resizer.dragging::after{background:var(--accent)}
+body.col-resizing{cursor:col-resize;user-select:none}
+.vresizer{position:absolute;left:0;right:0;height:9px;cursor:row-resize;z-index:7}
+.vresizer::after{content:"";position:absolute;left:0;right:0;top:4px;height:1px;background:transparent;transition:background .15s}
+.vresizer:hover::after,.vresizer.dragging::after{background:var(--accent)}
+body.row-resizing{cursor:row-resize;user-select:none}
 .brand{padding:18px 20px 14px;display:flex;align-items:baseline;gap:10px;border-bottom:1px solid var(--line)}
 .brand h1{font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
 .brand .count{font-size:11px;color:var(--txt-faint);letter-spacing:.04em;margin-left:auto}
@@ -109,8 +117,8 @@ body{background:var(--bg);color:var(--txt);overflow:hidden;
 .overlay.hidden{display:none}
 .overlay code{color:var(--accent);background:#0003;padding:1px 5px;border-radius:3px}
 
-.controls{display:flex;align-items:center;gap:18px;padding:13px 24px;border-top:1px solid var(--line);
-  flex-shrink:0;flex-wrap:wrap;background:var(--panel);z-index:2}
+.controls{display:flex;align-items:center;align-content:flex-start;gap:18px;padding:13px 24px;border-top:1px solid var(--line);
+  flex-shrink:0;flex-wrap:wrap;background:var(--panel);z-index:2;position:relative;overflow-y:auto}
 .ctl{display:flex;align-items:center;gap:8px}
 .ctl > .lbl{font-size:10.5px;color:var(--txt-faint);text-transform:uppercase;letter-spacing:.1em}
 select{padding:6px 26px 6px 10px;background:var(--panel-2);color:var(--txt);border:1px solid var(--line);
@@ -133,6 +141,19 @@ select:hover{border-color:var(--line-strong)}
 .swatch.custom{background-size:cover;background-position:center;background-color:var(--panel-2)}
 
 /* ---- 監査パネル ---- */
+/* ---- 設定パネル ---- */
+.set-row{display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
+.set-row:last-child{border-bottom:none}
+.set-row .set-k{font-size:13px;color:var(--txt)}
+.set-row .set-d{font-size:11px;color:var(--txt-faint);margin-top:3px;line-height:1.5}
+.set-row .set-main{flex:1;min-width:0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;flex-shrink:0}
+.seg-b{padding:7px 14px;background:var(--panel-2);color:var(--txt-dim);font-size:12px;cursor:pointer;border:none;
+  font-family:inherit;transition:.15s;border-left:1px solid var(--line)}
+.seg-b:first-child{border-left:none}
+.seg-b:hover{color:var(--txt)}
+.seg-b.on{background:var(--accent-soft);color:var(--accent)}
+
 .scrim{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:20}
 .scrim.show{display:flex}
 .audit{width:min(560px,92vw);max-height:84vh;background:var(--panel);border:1px solid var(--line-strong);
@@ -172,9 +193,9 @@ select:hover{border-color:var(--line-strong)}
   <aside class="sidebar">
     <div class="brand"><h1>Skins</h1><span class="count" id="count">—</span></div>
     <div class="search">
-      <input id="search" type="text" placeholder="名前で検索…" autocomplete="off">
-      <button class="iconbtn" id="favFilter" title="お気に入りのみ表示">★</button>
-      <button class="iconbtn" id="addFolderBtn" title="フォルダを作成（→で開く・←で閉じる・Shift+Enterで操作）">+</button>
+      <input id="search" type="text" placeholder="名前で検索…" autocomplete="off" aria-label="スキンを名前で検索">
+      <button class="iconbtn" id="favFilter" title="お気に入りのみ表示" aria-label="お気に入りのみ表示" aria-pressed="false">★</button>
+      <button class="iconbtn" id="addFolderBtn" title="フォルダを作成（→開く ・ ←閉じる ・ Shift+Enter 操作メニュー）" aria-label="フォルダを作成">+</button>
     </div>
     <div class="list" id="list"></div>
     <div class="sidebar-foot">
@@ -183,6 +204,7 @@ select:hover{border-color:var(--line-strong)}
       <button class="linkbtn elec" id="pullBtn" title="ダウンロードフォルダの直近スキンを取り込む" hidden>⟳ 取り込み</button>
       <input type="file" id="importFile" accept="application/json,.json" style="display:none">
     </div>
+    <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="サイドバーの幅を調整（ドラッグ）" title="ドラッグで幅を調整"></div>
   </aside>
 
   <main class="stage">
@@ -192,14 +214,14 @@ select:hover{border-color:var(--line-strong)}
         <div class="file" id="file"></div>
       </div>
       <div class="head-actions">
-        <button class="iconbtn" id="favBtn" title="このスキンをお気に入りに追加/解除" disabled>☆</button>
-        <button class="iconbtn" id="copyBtn" title="ファイル名をコピー" disabled>⧉</button>
-        <button class="iconbtn" id="swapBtn" title="前に見ていたスキンと入れ替え" disabled>⇄</button>
-        <button class="iconbtn elec" id="launcherBtn" title="このスキンをマインクラフトランチャーの保存済みスキンに追加（認証不要）" disabled hidden>⊕</button>
-        <button class="iconbtn elec" id="uploadBtn" title="Minecraftプロフィールに直接アップロード（要Microsoftログイン）" disabled hidden>☁</button>
-        <button class="iconbtn" id="mcBtn" title="minecraft.net/profile を新しいタブで開く（ログイン済みのブラウザ前提）">↗</button>
+        <button class="iconbtn" id="favBtn" title="お気に入りに追加/解除（Shift+S）" aria-label="お気に入りに追加または解除（ショートカット Shift+S）" aria-pressed="false" disabled>☆</button>
+        <button class="iconbtn" id="copyBtn" title="ファイル名をコピー" aria-label="ファイル名をコピー" disabled>⧉</button>
+        <button class="iconbtn" id="swapBtn" title="前に見ていたスキンと入れ替え" aria-label="前に見ていたスキンと入れ替え" disabled>⇄</button>
+        <button class="iconbtn elec" id="launcherBtn" title="このスキンをマインクラフトランチャーの保存済みスキンに追加（認証不要）" aria-label="ランチャーの保存済みスキンに追加" disabled hidden>⊕</button>
+        <button class="iconbtn elec" id="uploadBtn" title="Minecraftプロフィールに直接アップロード（要Microsoftログイン）" aria-label="Minecraftプロフィールにアップロード" disabled hidden>☁</button>
+        <button class="iconbtn" id="mcBtn" title="minecraft.net/profile を開く（ログイン済みのブラウザ前提）" aria-label="minecraft.net のプロフィールを開く">↗</button>
       </div>
-      <div class="hint">ドラッグ＝回転 ・ ホイール＝ズーム ・ 右ドラッグ＝移動 ・ ↑↓＝スキン送り ・ WASD＝カメラ回転 ・ +/−＝ズーム ・ 画像ドロップ＝試着/背景（自動判定）</div>
+      <div class="hint">ドラッグ＝回転 ・ ホイール＝ズーム ・ 右ドラッグ＝移動 ・ ↑↓＝スキン送り ・ WASD＝カメラ回転 ・ +/−＝ズーム ・ Shift+S＝★ ・ ,＝設定 ・ Esc＝戻る ・ 画像ドロップ＝試着/背景</div>
     </div>
 
     <div class="canvas-wrap">
@@ -207,22 +229,24 @@ select:hover{border-color:var(--line-strong)}
       <div class="overlay" id="overlay"><div class="mark">◇</div><p id="overlay-msg">読み込み中…</p></div>
     </div>
 
+    <div class="vresizer" id="vresizer" role="separator" aria-orientation="horizontal" aria-label="下パネルの高さを調整（ドラッグ）" title="ドラッグで高さを調整"></div>
     <div class="controls">
       <div class="ctl"><span class="lbl">動作</span>
-        <select id="anim">
+        <select id="anim" aria-label="アニメーション">
           <option value="walk">歩く</option><option value="run">走る</option>
           <option value="idle">待機</option><option value="wave">手を振る</option>
           <option value="fly">飛ぶ</option><option value="none">静止</option>
         </select></div>
       <div class="ctl"><span class="lbl">体型</span>
-        <select id="model">
+        <select id="model" aria-label="体型（腕の太さ）">
           <option value="auto-detect">自動判定</option>
           <option value="default">通常腕</option><option value="slim">スリム腕</option>
         </select></div>
-      <div class="toggle on" id="hat"><span class="dot"></span>外装レイヤー</div>
-      <div class="toggle on" id="rotate"><span class="dot"></span>自動回転</div>
+      <div class="toggle on" id="hat" role="switch" tabindex="0" aria-checked="true" aria-label="外装レイヤーの表示"><span class="dot"></span>外装レイヤー</div>
+      <div class="toggle on" id="rotate" role="switch" tabindex="0" aria-checked="true" aria-label="自動回転"><span class="dot"></span>自動回転</div>
       <div class="spacer"></div>
-      <div class="toggle" id="auditBtn"><span class="dot"></span>監査</div>
+      <button class="iconbtn" id="settingsBtn" title="設定（,）" aria-label="設定を開く" aria-haspopup="dialog">⚙</button>
+      <div class="toggle" id="auditBtn" role="button" tabindex="0" aria-label="監査パネルを開く"><span class="dot"></span>監査</div>
       <div class="ctl"><span class="lbl">背景</span>
         <div class="swatches" id="swatches"></div>
         <button class="iconbtn" id="bgImgBtn" title="画像ファイルを背景に設定（ドロップで試着と判定された場合はこちら）">▭</button>
@@ -246,6 +270,32 @@ select:hover{border-color:var(--line-strong)}
       <span class="progress" id="progress"></span>
     </div>
     <div class="audit-body" id="auditBody"></div>
+  </div>
+</div>
+
+<!-- 設定 -->
+<div class="scrim" id="settingsScrim">
+  <div class="audit" style="width:min(440px,92vw)" role="dialog" aria-modal="true" aria-label="設定">
+    <div class="audit-head"><h2>設定</h2><span class="x" id="settingsClose" role="button" tabindex="0" title="閉じる（Esc）" aria-label="設定を閉じる">✕</span></div>
+    <div class="audit-body" style="padding:6px 20px 16px">
+      <div class="set-row">
+        <div class="set-main">
+          <div class="set-k">慣性モード</div>
+          <div class="set-d">接地＝足を地面に固定し、腰から上が揺れる（重さは腰中心）。空中＝全身が自由にトレイル。</div>
+        </div>
+        <div class="seg" id="modeSeg" role="group" aria-label="慣性モード">
+          <button class="seg-b" data-mode="ground" aria-pressed="true">接地</button>
+          <button class="seg-b" data-mode="air" aria-pressed="false">空中</button>
+        </div>
+      </div>
+      <div class="set-row">
+        <div class="set-main">
+          <div class="set-k">背景の自動調整</div>
+          <div class="set-d">スキンの明暗に合わせて背景色を最適化（暗い→うっすら灰色 / 明るい→黒 / 混在→黒地にうっすら灰色）。</div>
+        </div>
+        <button class="toggle" id="autoBgToggle" role="switch" aria-checked="true" aria-label="背景の自動調整"><span class="dot"></span>自動</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -302,6 +352,7 @@ select:hover{border-color:var(--line-strong)}
   (function(){const c=$('swatches'); BGS.forEach((col,i)=>{const s=document.createElement('div');
     s.className='swatch'+(i===0?' on':''); s.style.background=col; s.title=col;
     s.onclick=()=>{
+      if(settings.autoBg){ settings.autoBg=false; saveSettings(); applySettings(); }  // 手動選択で自動はオフ
       viewer.background=col;
       document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('on'));
       s.classList.add('on');
@@ -464,59 +515,182 @@ select:hover{border-color:var(--line-strong)}
   });
   wrap.addEventListener('mouseleave',()=>{ gazeTargetYaw=0; gazeTargetPitch=0; });
 
-  // ---- 慣性：カメラを振ると全身が遅れて追従し、止めると元の位置へ戻る（バネ）。----
-  // playerObject へ毎フレーム“絶対”指定（加算しない）ので累積・暴走せず、目標が0に戻れば必ず0へ収束する。
-  //   ※以前は各パーツへ += していたが、アニメが触らない軸（体の.y等・静止時の全軸）が累積して暴走していた。
-  // 駆動はカメラ方位角(az)・極角(polar)の角速度。WASD/マウスドラッグ共通で、激しいほど大きく振れる。
-  const INER = { bodyYaw:0.10, bodyPitch:0.07, headYaw:0.08, headPitch:0.05,
-                 k:40, c:13, clamp:0.6, nonlin:0.15 };   // c≈2√k で過減衰ぎみ＝揺れすぎない
-  let azPrev=null, polPrev=null, wYaw=0, wPit=0, renderT=0;
-  const sBody={y:{p:0,v:0},x:{p:0,v:0}}, sHead={y:{p:0,v:0},x:{p:0,v:0}};
+  // ---- ユーザー設定（慣性モード 接地/空中・サイドバー幅・背景自動調整）。localStorage + userdata で永続化 ----
+  const settings = { inertiaMode:'ground', sidebarW:312, autoBg:true, controlsH:0 };  // controlsH:0=自動高さ
+  try{ Object.assign(settings, JSON.parse(localStorage.getItem('skin-gallery-settings')||'{}')); }catch(_){}
+  function saveSettings(){ try{ localStorage.setItem('skin-gallery-settings', JSON.stringify(settings)); }catch(_){} persistUserData(); }
+
+  // ---- 慣性（二次モーション）：アニメのベースポーズに、関節ごとのバネで“遅れる回転”を上乗せ。----
+  // 累積させないため、毎フレーム描画前に前回の上乗せ分を引き戻す（restorePose）→ アニメ更新 →
+  // バネ加算（render）の順。これでアニメが触らない軸も溜まらず、止めれば必ず元へ戻る。
+  //
+  // 軸の意味（skinview3d準拠）: x=前後スイング, y=ねじれ, z=左右スイング。
+  //   z は +で「両腕とも世界の左」へ向く（左腕は外転/右腕は内転）。よって両腕・両脚とも“同符号”にして
+  //   体をひねった方向へ揃ってトレイルさせる（左右で内/外にスプレイしない）。
+  // 各軸 {c:結合, lo,hi:可動域(rad)}。人体に寄せた非対称リミット:
+  //   腕 前後は広め/左右は外転>内転、脚は控えめ、体のひねりは中庸、頭は小さめ。
+  // 駆動: x=ピッチ角速度(sigP), y/z=ヨー角速度(sigY)。WASD/マウスドラッグ共通、激しいほど大きく振れる。
+  // z の cf = 遠心力の“外向き”符号（左肢+ / 右肢−）。速く回すほど外へ開く（ω²で効く）。
+  const JOINT = {
+    // body: y=ひねり(増し) x=前後の反り（背中の反り。後ろ側 hi を広め）
+    body:     { x:{c:0.13, lo:-0.30, hi:0.34}, y:{c:0.19, lo:-0.45, hi:0.45} },
+    // arms: c を下げて“効きを弱め＝速さで滑らかにスケール”。最大振れ角(lo/hi)は据え置き
+    leftArm:  { x:{c:0.11, lo:-0.45, hi:0.55}, z:{c:0.16, cf:1.0,  lo:-0.22, hi:0.55} },
+    rightArm: { x:{c:0.11, lo:-0.45, hi:0.55}, z:{c:0.16, cf:-1.0, lo:-0.55, hi:0.22} },
+    leftLeg:  { x:{c:0.10, lo:-0.30, hi:0.30}, z:{c:0.08, cf:0.5,  lo:-0.10, hi:0.24} },
+    rightLeg: { x:{c:0.10, lo:-0.30, hi:0.30}, z:{c:0.08, cf:-0.5, lo:-0.24, hi:0.10} },
+  };
+  // 頭: ひねり(y)・うなずき(x)とも増し
+  const HEAD = { x:{c:0.08, lo:-0.35, hi:0.35}, y:{c:0.12, lo:-0.50, hi:0.50} };
+  const SPR = {k:42, c:13};                     // 共通バネ（c≈2√k で過減衰ぎみ＝揺れすぎない）
+  const DRV = {nonlin:0.12, accel:0.030, prop:0.35, cf:0.016};  // 非線形・角加速度キック・体→子の伝播・遠心力(ω²係数)
+  // 慣性モード: ground=接地（足を固定・腰中心に上方向へ伝播・脚は自由に振れない） / air=空中（全身ぶら下がりで脚も自由トレイル）
+  const MODE = {
+    // ground=接地: 腰が慣性中心。脚は自由スイングは抑えめ（接地寄り）だが、腰の動き・遠心力にはしっかり連動して見える。
+    ground: {bodyScale:1.15, legC:0.30, legCf:0.45, legProp:0.50},
+    // air=空中: 全身ぶら下がりで脚も自由にトレイル。
+    air:    {bodyScale:1.0,  legC:1.0,  legCf:1.0,  legProp:0.35},
+  };
+  const limbNames = Object.keys(JOINT);
+  const AXES = ['x','y','z'];
+  const sp = {};                                // sp[part][axis] = {p,v} バネ状態
+  const applied = {};                           // applied[part][axis] 上乗せ済み（次フレームで戻す）
+  limbNames.concat('head').forEach(n=>{ sp[n]={x:{p:0,v:0},y:{p:0,v:0},z:{p:0,v:0}}; applied[n]={x:0,y:0,z:0}; });
+  let azPrev=null, polPrev=null, wYaw=0, wPit=0, aYaw=0, aPit=0, wYawP=0, wPitP=0, renderT=0;
+  let physicsSettleUntil=0;   // スキン読み込み直後はこの時刻まで物理を当てない（連続送りで毎回挟まないため）
   const wrapPI=d=>{ while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI; return d; };
-  function spr(s, target, dt){           // 目標(=ラグ)へ向かうバネ。目標が0に戻れば必ず0へ収束
-    s.v += (INER.k*(target-s.p) - INER.c*s.v)*dt;
+  const clampN=(v,lo,hi)=>v<lo?lo:(v>hi?hi:v);
+  function spr(s, target, lo, hi, dt){          // 目標へ向かうダンパ付きバネ。可動域[lo,hi]でクランプ
+    s.v += (SPR.k*(target-s.p) - SPR.c*s.v)*dt;
     s.p += s.v*dt;
-    if(s.p> INER.clamp) s.p= INER.clamp;
-    if(s.p<-INER.clamp) s.p=-INER.clamp;
+    s.p = clampN(s.p, lo, hi);
     return s.p;
   }
-  const sig=w=>w + INER.nonlin*w*Math.abs(w);   // 激しさで非線形に増す駆動
+  // 駆動信号：角速度w＋非線形＋角加速度aのキック（加速で溜め・減速で行き過ぎ＝慣性／momentum）
+  const drv=(w,a)=> w + DRV.nonlin*w*Math.abs(w) + DRV.accel*a;
+
+  // ---- 位置追従（接地モード）：体を腰（底面）支点で曲げ、各部位の“位置”を腰回転に合わせて平行移動。
+  //   回転は各部位とも独立のまま＝フロート感維持。位置だけ追従＝肩/首/股の接合が外れない。
+  //   skin内ローカル: 腰(ボディ底面)= y -12 / 肩= y -2 / 首(頭)= 各基準 / 股(脚)= y -12。
+  const WAIST=[0,-12,0];                 // 腰のワールド位置（ボディ底面）
+  const basePos=new WeakMap();           // 部位 -> 初期position（スキン再読込で別オブジェクトになっても自動再取得）
+  function getBase(p){ let b=basePos.get(p); if(!b){ b={x:p.position.x,y:p.position.y,z:p.position.z}; basePos.set(p,b); } return b; }
+  function qRot(q, x,y,z){                // クォータニオンでベクトルを回す
+    const tx=2*(q.y*z - q.z*y), ty=2*(q.z*x - q.x*z), tz=2*(q.x*y - q.y*x);
+    return [ x + q.w*tx + (q.y*tz - q.z*ty),
+             y + q.w*ty + (q.z*tx - q.x*tz),
+             z + q.w*tz + (q.x*ty - q.y*tx) ];
+  }
+  const FOLLOW=['head','leftArm','rightArm','leftLeg','rightLeg'];
+  // 追従強度（1=接合点に完全追従 / <1=控えめにスライド）。腕は滑りが目立つので弱め。
+  const FOLLOW_K={ head:0.8, leftArm:0.55, rightArm:0.55, leftLeg:1.0, rightLeg:1.0 };
+  function applyPositionFollow(sk, ground){
+    if(!sk.body) return;
+    if(ground){
+      const q=sk.body.quaternion;
+      // 体：腰(底面)支点で回す＝底面のワールド位置を固定するよう平行移動
+      const bb=getBase(sk.body), wl=[0,-6,0], rw=qRot(q,wl[0],wl[1],wl[2]);
+      sk.body.position.set(bb.x+(wl[0]-rw[0]), bb.y+(wl[1]-rw[1]), bb.z+(wl[2]-rw[2]));
+      // 他部位：腰回転による接合点の移動ぶんだけ平行移動（回転は触らない＝フロート維持）
+      FOLLOW.forEach(n=>{ const p=sk[n]; if(!p)return; const b=getBase(p), k=FOLLOW_K[n]||1;
+        const ax=b.x-WAIST[0], ay=b.y-WAIST[1], az=b.z-WAIST[2];
+        const r=qRot(q, ax,ay,az);
+        p.position.set(b.x+(r[0]-ax)*k, b.y+(r[1]-ay)*k, b.z+(r[2]-az)*k);
+      });
+    } else {
+      // 空中：位置は基準に戻す（大好きなフロート挙動はそのまま）
+      const bb=getBase(sk.body); sk.body.position.set(bb.x,bb.y,bb.z);
+      FOLLOW.forEach(n=>{ const p=sk[n]; if(!p)return; const b=getBase(p); p.position.set(b.x,b.y,b.z); });
+    }
+  }
+
+  // 描画ループ先頭：前フレームの上乗せを引き戻してから本来の draw（アニメ更新→render）を回す
+  function restorePose(){
+    const sk=viewer.playerObject&&viewer.playerObject.skin; if(!sk)return;
+    limbNames.forEach(n=>{ const p=sk[n], a=applied[n]; if(!p)return;
+      p.rotation.x-=a.x; p.rotation.y-=a.y; p.rotation.z-=a.z; a.x=a.y=a.z=0; });
+  }
+  const realDraw=viewer.draw.bind(viewer);
+  viewer.draw=function(){ restorePose(); realDraw(); };
+
+  // 関節を積分。mod={cMul:直接慣性倍率, cfMul:遠心力倍率, prop:親伝播係数}でモード差を反映。
+  function applyJoint(part, cfg, s, a, dY, dP, pPosX, pPosY, spin2, mod, dt){
+    AXES.forEach(ax=>{
+      const j=cfg[ax]; if(!j){ a[ax]=0; return; }
+      const root = ax==='x' ? dP : dY;          // x=前後(ピッチ) / y,z=ヨー
+      const par  = ax==='x' ? pPosX : pPosY;    // 親の同系統オフセットを伝播（接地脚では負＝逆＝接地保持）
+      let tgt = -j.c*mod.cMul*root + mod.prop*par;
+      if(j.cf) tgt += j.cf*mod.cfMul*DRV.cf*spin2;   // 遠心力（接地脚では cfMul=0）
+      tgt = clampN(tgt, j.lo, j.hi);
+      const o = spr(s[ax], tgt, j.lo, j.hi, dt);
+      part.rotation[ax]+=o; a[ax]=o;
+    });
+  }
 
   viewer.render=(base=>()=>{
     const now=performance.now();
     const dt=renderT?Math.min((now-renderT)/1000,0.05):0; renderT=now;
 
-    // カメラ角速度（方位・極）を測る
+    // カメラ角速度（方位・極）と角加速度を測る
     const c=viewer.controls;
     const az=c.getAzimuthalAngle(), pol=c.getPolarAngle();
     if(azPrev!==null && dt>0){
-      wYaw += ((wrapPI(az-azPrev)/dt)-wYaw)*0.4;   // 平滑化
+      wYaw += ((wrapPI(az-azPrev)/dt)-wYaw)*0.4;            // 角速度（平滑化）
       wPit += (((pol-polPrev)/dt)-wPit)*0.4;
+      aYaw += (((wYaw-wYawP)/dt)-aYaw)*0.3;                 // 角加速度（平滑化）
+      aPit += (((wPit-wPitP)/dt)-aPit)*0.3;
     }
-    azPrev=az; polPrev=pol;
-    const sigY=sig(wYaw), sigP=sig(wPit);
+    azPrev=az; polPrev=pol; wYawP=wYaw; wPitP=wPit;
+    const dY=drv(wYaw,aYaw), dP=drv(wPit,aPit);
 
     // 視線
     gazeYaw+=(gazeTargetYaw-gazeYaw)*GAZE_EASE;
     gazePitch+=(gazeTargetPitch-gazePitch)*GAZE_EASE;
 
-    const po=viewer.playerObject;
-    if(po && dt>0){
-      // 全身ラグ（絶対指定＝累積しない）。目標は -結合×角速度＝カメラと逆向きにトレイル
-      po.rotation.y = spr(sBody.y, -INER.bodyYaw*sigY, dt);
-      po.rotation.x = spr(sBody.x, -INER.bodyPitch*sigP, dt);
-      // 頭は視線＋追加ラグ（こちらも絶対指定で安全）
-      const hy=spr(sHead.y, -INER.headYaw*sigY, dt), hx=spr(sHead.x, -INER.headPitch*sigP, dt);
-      const head=po.skin&&po.skin.head;
-      if(head){ head.rotation.y=gazeYaw+hy; head.rotation.x=gazePitch+hx; }
-    } else if(po && po.skin && po.skin.head){
-      po.skin.head.rotation.y=gazeYaw; po.skin.head.rotation.x=gazePitch;
+    const spin2 = wYaw*wYaw;   // 遠心力の駆動＝ヨー角速度の二乗
+    const m = MODE[settings.inertiaMode] || MODE.ground;
+    const bodyMod={cMul:m.bodyScale, cfMul:1, prop:DRV.prop};   // 腰＝慣性中心
+    const armMod ={cMul:1,           cfMul:1, prop:DRV.prop};
+    const legMod ={cMul:m.legC,      cfMul:m.legCf, prop:m.legProp};
+    const sk=viewer.playerObject&&viewer.playerObject.skin;
+    if(sk && dt>0 && now>=physicsSettleUntil){
+      // 体を先に積分 → そのオフセットを頭・腕・脚へ伝播（連鎖スプリングボーン）
+      if(sk.body) applyJoint(sk.body, JOINT.body, sp.body, applied.body, dY, dP, 0, 0, spin2, bodyMod, dt);
+      const bx=sp.body.x.p, by=sp.body.y.p;
+      limbNames.forEach(n=>{ if(n==='body')return; const p=sk[n]; if(!p)return;
+        applyJoint(p, JOINT[n], sp[n], applied[n], dY, dP, bx, by, spin2, n.indexOf('Leg')>=0?legMod:armMod, dt); });
+      // 頭：視線＋ラグ（体から伝播）。絶対指定で安全（restore対象外）
+      const hy=spr(sp.head.y, clampN(-HEAD.y.c*dY + DRV.prop*by, HEAD.y.lo, HEAD.y.hi), HEAD.y.lo, HEAD.y.hi, dt);
+      const hx=spr(sp.head.x, clampN(-HEAD.x.c*dP + DRV.prop*bx, HEAD.x.lo, HEAD.x.hi), HEAD.x.lo, HEAD.x.hi, dt);
+      if(sk.head){ sk.head.rotation.y=gazeYaw+hy; sk.head.rotation.x=gazePitch+hx; }
+      applyPositionFollow(sk, settings.inertiaMode==='ground');   // 各部位の位置を腰回転に追従（接地時）
+    } else if(sk){
+      // 読み込み直後のひと呼吸（or 静止）：物理は当てず素のポーズ。復帰時にスナップしないよう状態を0へ。
+      limbNames.forEach(n=>{ const a=applied[n], s=sp[n];
+        a.x=a.y=a.z=0; s.x.p=s.x.v=s.y.p=s.y.v=s.z.p=s.z.v=0; });
+      sp.head.x.p=sp.head.x.v=sp.head.y.p=sp.head.y.v=0;
+      if(sk.head){ sk.head.rotation.y=gazeYaw; sk.head.rotation.x=gazePitch; }
+      applyPositionFollow(sk, false);            // 位置は基準へ
+      azPrev=null; wYaw=wPit=aYaw=aPit=0;         // 角速度の蓄積もクリア（復帰時に無駄な勢いを持たない）
     }
     base();
   })(viewer.render.bind(viewer));
 
+  // 待機：標準のIdleにごく僅かな“呼吸”を足す（腕が少し開いて閉じる＋胸の前後）。本当に若干だけ。
+  function makeIdle(){
+    const a=new skinview3d.IdleAnimation();
+    const sup=a.animate.bind(a);
+    a.animate=function(p,d){
+      sup(p,d);                                   // 既存：腕のごく僅かな揺れ（絶対指定）
+      const t=this.progress, breath=0.5+0.5*Math.sin(t*1.2);   // 0..1 のゆっくりした呼吸
+      if(p.skin.leftArm)  p.skin.leftArm.rotation.z  += 0.045*breath;   // 両腕がそっと開いて閉じる
+      if(p.skin.rightArm) p.skin.rightArm.rotation.z += -0.045*breath;
+      if(p.skin.body)     p.skin.body.rotation.x = 0.012*Math.sin(t*1.2);  // 胸の前後（呼吸・絶対指定）
+    };
+    return a;
+  }
   const ANIMS={walk:()=>new skinview3d.WalkingAnimation(),run:()=>new skinview3d.RunningAnimation(),
-    idle:()=>new skinview3d.IdleAnimation(),wave:()=>new skinview3d.WaveAnimation(),
+    idle:()=>makeIdle(),wave:()=>new skinview3d.WaveAnimation(),
     fly:()=>new skinview3d.FlyingAnimation(),none:()=>null};
   function applyAnim(){const f=ANIMS[animSel.value]||ANIMS.walk; viewer.animation=f(); if(viewer.animation)viewer.animation.speed=1;}
   applyAnim();
@@ -533,11 +707,12 @@ select:hover{border-color:var(--line-strong)}
     persistUserData();
   }
   function updateFavBtn(){
-    if(current<0||previewing){ favBtn.disabled=true; favBtn.classList.remove('on'); favBtn.textContent='☆'; return; }
+    if(current<0||previewing){ favBtn.disabled=true; favBtn.classList.remove('on'); favBtn.textContent='☆'; favBtn.setAttribute('aria-pressed','false'); return; }
     const on=isFav(entries[current]);
     favBtn.disabled=false;
     favBtn.classList.toggle('on',on);
     favBtn.textContent=on?'★':'☆';
+    favBtn.setAttribute('aria-pressed',on?'true':'false');
   }
 
   // ---- フォルダ（HTML側のみの整理整頓。localStorageに保存。1階層・キーボード操作） ----
@@ -562,7 +737,7 @@ select:hover{border-color:var(--line-strong)}
   })();
 
   // ---- ユーザーデータ（★・フォルダ）の集約・自動保存・採用 ----
-  function currentUserData(){ return {version:1, favorites:[...favorites], folders, folderMap}; }
+  function currentUserData(){ return {version:1, favorites:[...favorites], folders, folderMap, settings}; }
   function persistUserData(){  // Electronでは変更の都度JSONへ自動保存
     if(window.electronAPI&&window.electronAPI.saveUserData) window.electronAPI.saveUserData(currentUserData());
   }
@@ -571,6 +746,7 @@ select:hover{border-color:var(--line-strong)}
     if(Array.isArray(obj.favorites)) favorites=new Set(obj.favorites);
     if(Array.isArray(obj.folders))   folders=obj.folders;
     if(obj.folderMap&&typeof obj.folderMap==='object') folderMap=obj.folderMap;
+    if(obj.settings&&typeof obj.settings==='object') Object.assign(settings, obj.settings);
   }
 
   // ---- 書き出し / 読み込み（ポータブルなJSON。md5キーなのでファイル名が変わっても追従） ----
@@ -588,6 +764,7 @@ select:hover{border-color:var(--line-strong)}
     if(Array.isArray(obj.favorites)){ favorites=new Set(obj.favorites); try{localStorage.setItem(FAV_KEY,JSON.stringify([...favorites]));}catch(_){} }
     if(Array.isArray(obj.folders)){ folders=obj.folders; saveFolders(); }
     if(obj.folderMap&&typeof obj.folderMap==='object'){ folderMap=obj.folderMap; saveFolderMap(); }
+    if(obj.settings&&typeof obj.settings==='object'){ Object.assign(settings, obj.settings); saveSettings(); applySettings(); }
     renderList(); updateFavBtn();
   }
   let focused={type:null}; // {type:'folder',id} | {type:'skin',i}
@@ -749,7 +926,7 @@ select:hover{border-color:var(--line-strong)}
     fileEl.textContent=e.file+'  ·  '+kb(e.size)+'  ·  '+(e.w||'?')+'×'+(e.h||'?');
     overlay.classList.remove('hidden'); overlayMsg.textContent='描画中…';
     viewer.loadSkin(e.data,{model:modelSel.value})
-      .then(()=>{applyOuter();overlay.classList.add('hidden');})
+      .then(()=>{applyOuter();overlay.classList.add('hidden'); if(settings.autoBg)applyAutoBg(e); physicsSettleUntil=performance.now()+200;})
       .catch(err=>{overlayMsg.innerHTML='読み込み失敗: '+e.file+'<br><span style="font-size:11px">'+(err&&err.message||'')+'</span>';});
     document.querySelectorAll('.row').forEach(r=>r.classList.toggle('active',+r.dataset.i===i));
     const row=listEl.querySelector('.row[data-i="'+i+'"]'); if(row)row.scrollIntoView({block:'nearest'});
@@ -774,8 +951,14 @@ select:hover{border-color:var(--line-strong)}
     img.src=e.data;
   }
 
+  let thumbIO=null;   // サムネは見えた行だけ遅延生成（起動時の大量デコードによるカクつき防止）
   function renderList(){
     listEl.innerHTML='';
+    if(thumbIO) thumbIO.disconnect();
+    thumbIO=new IntersectionObserver(ents=>{
+      ents.forEach(en=>{ if(!en.isIntersecting)return; const im=en.target, e=entries[+im.dataset.ti];
+        thumbIO.unobserve(im); if(e){ if(e._thumb)im.src=e._thumb; else ensureThumb(e,src=>{im.src=src;}); } });
+    },{root:listEl, rootMargin:'200px'});
     const rows=visibleRows();
     if(!rows.length){const d=document.createElement('div');d.className='empty-list';d.textContent='該当なし';listEl.appendChild(d);}
     let shown=0;
@@ -808,9 +991,9 @@ select:hover{border-color:var(--line-strong)}
       row.dataset.type='skin'; row.dataset.i=i;
       if(e.valid===false){const ph=document.createElement('div');ph.className='ph';ph.textContent='⚠';row.appendChild(ph);}
       else{
-        const im=document.createElement('img');im.className='thumb';im.width=34;im.height=34;im.alt='';
+        const im=document.createElement('img');im.className='thumb';im.width=34;im.height=34;im.alt='';im.dataset.ti=i;
         row.appendChild(im);
-        if(e._thumb)im.src=e._thumb; else ensureThumb(e,src=>{im.src=src;});
+        if(e._thumb)im.src=e._thumb; else thumbIO.observe(im);
       }
       const meta=document.createElement('div');meta.className='meta';
       const nm=document.createElement('div');nm.className='name';nm.textContent=name;
@@ -910,7 +1093,8 @@ select:hover{border-color:var(--line-strong)}
     setFav(e,!isFav(e)); updateFavBtn(); renderList();
   });
   favFilterBtn.addEventListener('click',()=>{
-    favOnly=!favOnly; favFilterBtn.classList.toggle('on',favOnly); renderList();
+    favOnly=!favOnly; favFilterBtn.classList.toggle('on',favOnly);
+    favFilterBtn.setAttribute('aria-pressed',favOnly?'true':'false'); renderList();
   });
   function flashCopy(){
     copyBtn.classList.add('on'); copyBtn.textContent='✓';
@@ -952,16 +1136,22 @@ select:hover{border-color:var(--line-strong)}
   searchEl.addEventListener('input',renderList);
   animSel.addEventListener('change',applyAnim);
   modelSel.addEventListener('change',()=>{if(current>=0)loadSkin(current);});
-  hatBtn.addEventListener('click',()=>{showOuter=!showOuter;hatBtn.classList.toggle('on',showOuter);applyOuter();});
+  hatBtn.addEventListener('click',()=>{showOuter=!showOuter;hatBtn.classList.toggle('on',showOuter);hatBtn.setAttribute('aria-checked',showOuter?'true':'false');applyOuter();});
   rotateBtn.addEventListener('click',()=>{
     autoRotateWanted=!autoRotateWanted;
     rotateBtn.classList.toggle('on',autoRotateWanted);
+    rotateBtn.setAttribute('aria-checked',autoRotateWanted?'true':'false');
     if(autoRotateWanted) resumeAutoRotateEased();
     else { cancelEase(); viewer.autoRotate=false; viewer.autoRotateSpeed=0; }
+  });
+  // role=switch/button の div トグルをキーボード（Enter/Space）でも操作可能に
+  [hatBtn,rotateBtn,$('auditBtn')].forEach(el=>{ if(!el)return;
+    el.addEventListener('keydown',ev=>{ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); el.click(); } });
   });
   document.addEventListener('keydown',ev=>{
     if(ev.key==='Escape'){
       if(!ctxEl.classList.contains('hidden')) closeContextMenu();
+      else if(settingsScrim.classList.contains('show')) closeSettings();
       else if(scrim.classList.contains('show')) scrim.classList.remove('show');
       else exitPreview();
       return;
@@ -969,6 +1159,12 @@ select:hover{border-color:var(--line-strong)}
     if(document.activeElement===searchEl)return;
 
     const k=ev.key.toLowerCase();
+    // Shift+S / Ctrl+S で現在のスキンをお気に入りトグル（WASDの「S」と衝突しないように修飾キー必須）
+    if(k==='s' && (ev.shiftKey||ev.ctrlKey||ev.metaKey)){
+      if(current>=0 && !previewing){ const e=entries[current]; setFav(e,!isFav(e)); updateFavBtn(); renderList(); }
+      ev.preventDefault(); return;
+    }
+    if(ev.key===','){ openSettings(); ev.preventDefault(); return; }   // 設定を開く
     if(k==='a'||k==='d'||k==='w'||k==='s'){
       if(!ev.repeat) setCamKey(k,true);
       ev.preventDefault(); return;
@@ -1022,7 +1218,7 @@ select:hover{border-color:var(--line-strong)}
     if(ev.key==='-'||ev.key==='_') setCamKey('zoomOut',false);
   });
   let rt; window.addEventListener('resize',()=>{clearTimeout(rt);
-    rt=setTimeout(()=>{viewer.width=wrap.clientWidth;viewer.height=wrap.clientHeight;},100);});
+    rt=setTimeout(()=>{viewer.width=wrap.clientWidth;viewer.height=wrap.clientHeight;positionVHandle();},100);});
 
   // ---- Electron 連携（アプリ実行時のみ：ライブ走査・自動保存・Downloads監視・ランチャー/アップロード） ----
   const E = window.electronAPI;
@@ -1089,8 +1285,118 @@ select:hover{border-color:var(--line-strong)}
     });
   }
 
+  // ---- 背景の自動調整：スキンの明暗を見て背景色を決める（暗い→うっすら灰 / 明るい→黒 / 混在→黒地にうっすら灰） ----
+  function computeBgColor(e,cb){
+    if(e._bg){ cb(e._bg); return; }
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const cv=document.createElement('canvas'); cv.width=img.naturalWidth; cv.height=img.naturalHeight;
+        const ctx=cv.getContext('2d'); ctx.imageSmoothingEnabled=false; ctx.drawImage(img,0,0);
+        const d=ctx.getImageData(0,0,cv.width,cv.height).data;
+        let opaque=0,dark=0,light=0,sum=0;
+        for(let p=0;p<d.length;p+=4){
+          if(d[p+3]<128)continue;                       // 透明は無視
+          const lum=0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2];
+          opaque++; sum+=lum;
+          if(lum<90)dark++; else if(lum>175)light++;
+        }
+        let bg='#0d0d0f';                                // 既定（黒）
+        if(opaque){
+          const avg=sum/opaque, hasDark=dark/opaque>0.15, hasLight=light/opaque>0.15;
+          if(hasDark && hasLight) bg='#1c1c20';          // 両方含む → 黒地にうっすら灰色
+          else if(avg<110)        bg='#494950';          // 暗いキャラ → うっすら灰色（視認用）
+          else                    bg='#0d0d0f';          // 明るい/白系 → 黒
+        }
+        e._bg=bg; cb(bg);
+      }catch(_){ cb('#0d0d0f'); }
+    };
+    img.onerror=()=>cb('#0d0d0f');
+    img.src=e.data;
+  }
+  function applyAutoBg(e){
+    computeBgColor(e,col=>{
+      if(!settings.autoBg)return;
+      viewer.background=col; customBgEl&&customBgEl.classList.remove('on');
+      document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('on'));
+    });
+  }
+
+  // ---- 設定の反映（サイドバー幅・設定UIの同期） ----
+  function positionVHandle(){   // 下パネルの上端に合わせてリサイズ用ハンドル(独立要素)を配置
+    const vz=$('vresizer'), c=document.querySelector('.controls');
+    if(vz&&c) vz.style.bottom=Math.max(0,(c.offsetHeight-4))+'px';
+  }
+  function applySettings(){
+    const w=Math.max(240,Math.min(560, settings.sidebarW||312));
+    document.querySelector('.app').style.gridTemplateColumns=w+'px 1fr';
+    const ctrls=document.querySelector('.controls');
+    if(ctrls) ctrls.style.minHeight = settings.controlsH>0 ? settings.controlsH+'px' : '';   // min-height＝内容は絶対隠れない
+    viewer.width=wrap.clientWidth; viewer.height=wrap.clientHeight;
+    positionVHandle();
+    document.querySelectorAll('#modeSeg .seg-b').forEach(b=>{
+      const on=b.dataset.mode===settings.inertiaMode; b.classList.toggle('on',on); b.setAttribute('aria-pressed',on?'true':'false');
+    });
+    const ab=$('autoBgToggle'); if(ab){ ab.classList.toggle('on',settings.autoBg); ab.setAttribute('aria-checked',settings.autoBg?'true':'false'); }
+  }
+
+  // ---- サイドバー幅をドラッグで調整 ----
+  (function(){
+    const rz=$('resizer'); if(!rz)return;
+    let dragging=false;
+    const onMove=ev=>{ if(!dragging)return;
+      settings.sidebarW=Math.max(240,Math.min(560,ev.clientX));
+      document.querySelector('.app').style.gridTemplateColumns=settings.sidebarW+'px 1fr';
+      viewer.width=wrap.clientWidth; viewer.height=wrap.clientHeight;
+    };
+    const onUp=()=>{ if(!dragging)return; dragging=false; rz.classList.remove('dragging');
+      document.body.classList.remove('col-resizing'); saveSettings(); };
+    rz.addEventListener('mousedown',ev=>{ dragging=true; rz.classList.add('dragging');
+      document.body.classList.add('col-resizing'); ev.preventDefault(); });
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+  })();
+
+  // ---- 下の操作パネルの高さをドラッグで調整 ----
+  (function(){
+    const vz=$('vresizer'); if(!vz)return;
+    const ctrls=document.querySelector('.controls'), stage=document.querySelector('.stage');
+    let dragging=false;
+    const onMove=ev=>{ if(!dragging)return;
+      const rect=stage.getBoundingClientRect();
+      const h=Math.max(56, Math.min(rect.height*0.7, rect.bottom-ev.clientY));
+      settings.controlsH=Math.round(h);
+      ctrls.style.minHeight=settings.controlsH+'px';
+      positionVHandle();
+      viewer.width=wrap.clientWidth; viewer.height=wrap.clientHeight;
+    };
+    const onUp=()=>{ if(!dragging)return; dragging=false; vz.classList.remove('dragging');
+      document.body.classList.remove('row-resizing'); saveSettings(); };
+    vz.addEventListener('mousedown',ev=>{ dragging=true; vz.classList.add('dragging');
+      document.body.classList.add('row-resizing'); ev.preventDefault(); });
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+  })();
+
+  // ---- 設定パネル ----
+  const settingsScrim=$('settingsScrim');
+  function openSettings(){ applySettings(); settingsScrim.classList.add('show'); }
+  function closeSettings(){ settingsScrim.classList.remove('show'); }
+  $('settingsBtn').addEventListener('click',openSettings);
+  $('settingsClose').addEventListener('click',closeSettings);
+  $('settingsClose').addEventListener('keydown',ev=>{ if(ev.key==='Enter'||ev.key===' '){closeSettings();ev.preventDefault();} });
+  settingsScrim.addEventListener('click',ev=>{ if(ev.target===settingsScrim)closeSettings(); });
+  document.querySelectorAll('#modeSeg .seg-b').forEach(b=>{
+    b.addEventListener('click',()=>{ settings.inertiaMode=b.dataset.mode; saveSettings(); applySettings(); });
+  });
+  $('autoBgToggle').addEventListener('click',()=>{
+    settings.autoBg=!settings.autoBg; saveSettings(); applySettings();
+    if(settings.autoBg && current>=0) applyAutoBg(entries[current]);
+  });
+
   // ---- 起動 ----
   function go(){
+    applySettings();
     renderList();
     const first=entries.findIndex(e=>e.valid!==false);
     if(first>=0)loadSkin(first);
