@@ -1420,6 +1420,165 @@
             (function () {
                 "use strict";
                 const $ = (id) => document.getElementById(id);
+
+                // ---- 言語（OS/ブラウザが日本語以外なら英語UIに） ----
+                const lang = (navigator.language || "ja")
+                    .toLowerCase()
+                    .startsWith("ja")
+                    ? "ja"
+                    : "en";
+                // 日本語 -> 英語 辞書（静的UI＋動的文字列）。tr() で動的にも使う。
+                const EN = {
+                    // サイドバー
+                    "名前で検索…": "Search by name…",
+                    "お気に入りのみ表示": "Show favorites only",
+                    "フォルダを作成（→開く ・ ←閉じる ・ Shift+Enter 操作メニュー）":
+                        "New folder (→ open · ← close · Shift+Enter menu)",
+                    "フォルダを作成": "New folder",
+                    "⤓ 書き出し": "⤓ Export",
+                    "⤒ 読み込み": "⤒ Import",
+                    "⟳ 取り込み": "⟳ Import recent",
+                    "ダウンロードフォルダの直近スキンを取り込む":
+                        "Import recent skins from Downloads",
+                    "📁 開く": "📁 Open",
+                    "📂 変更": "📂 Change",
+                    "スキンフォルダをエクスプローラで開く":
+                        "Open skin folder in Explorer",
+                    "スキンフォルダを開く": "Open skin folder",
+                    "スキンを読み込むフォルダを変更": "Change skin folder",
+                    "スキンフォルダを変更": "Change skin folder",
+                    "namemc でスキンを探す（DLでこのフォルダに自動取り込み）":
+                        "Browse skins on namemc (downloads import here)",
+                    "namemc スキンブラウザを開く": "Open namemc skin browser",
+                    "◍ namemc": "◍ namemc",
+                    "ドラッグで幅を調整": "Drag to resize",
+                    "サイドバーの幅を調整（ドラッグ）": "Resize sidebar (drag)",
+                    // ヘッダー
+                    "スキンを選択": "Select a skin",
+                    "お気に入りに追加/解除（Shift+S）":
+                        "Toggle favorite (Shift+S)",
+                    "お気に入りに追加または解除（ショートカット Shift+S）":
+                        "Toggle favorite (shortcut: Shift+S)",
+                    "ファイル名をコピー": "Copy filename",
+                    "前に見ていたスキンと入れ替え": "Swap with previous skin",
+                    "このスキンをマインクラフトランチャーの保存済みスキンに追加（認証不要）":
+                        "Add this skin to the Minecraft launcher (no login)",
+                    "ランチャーの保存済みスキンに追加":
+                        "Add to launcher saved skins",
+                    "Minecraftプロフィールに直接アップロード（要Microsoftログイン）":
+                        "Upload to your Minecraft profile (Microsoft login)",
+                    "Minecraftプロフィールにアップロード":
+                        "Upload to Minecraft profile",
+                    "ポーズ/インスペクト：左ドラッグで動かし離すと固定 / 右クリックでその部位を解除 / 空きで右ダブルクリックで全解除":
+                        "Pose/Inspect: drag to move, right-click to release a part, double right-click empty space to release all",
+                    "ポーズ/インスペクトモード": "Pose / Inspect mode",
+                    "minecraft.net/profile を開く（ログイン済みのブラウザ前提）":
+                        "Open minecraft.net/profile (assumes signed-in browser)",
+                    "minecraft.net のプロフィールを開く":
+                        "Open minecraft.net profile",
+                    "ドラッグ＝回転 ・ ホイール＝ズーム ・ 右ドラッグ＝移動 ・ ↑↓＝スキン送り ・ WASD＝カメラ回転 ・ +/−＝ズーム ・ Shift+S＝★ ・ ,＝設定 ・ Esc＝戻る ・ 画像ドロップ＝試着/背景":
+                        "Drag = rotate · Wheel = zoom · Right-drag = pan · ↑↓ = switch skin · WASD = camera · +/− = zoom · Shift+S = ★ · , = settings · Esc = back · Drop image = try on / background",
+                    // 操作パネル
+                    動作: "Motion",
+                    体型: "Model",
+                    歩く: "Walk",
+                    走る: "Run",
+                    待機: "Idle",
+                    手を振る: "Wave",
+                    飛ぶ: "Fly",
+                    静止: "None",
+                    自動判定: "Auto",
+                    通常腕: "Default",
+                    スリム腕: "Slim",
+                    外装レイヤー: "Outer layer",
+                    自動回転: "Auto-rotate",
+                    "設定（,）": "Settings (,)",
+                    設定を開く: "Open settings",
+                    監査: "Audit",
+                    監査パネルを開く: "Open audit panel",
+                    背景: "Background",
+                    "画像ファイルを背景に設定（ドロップで試着と判定された場合はこちら）":
+                        "Set an image as background",
+                    // 監査
+                    "監査 — 破損チェック & 読込テスト":
+                        "Audit — integrity & load test",
+                    正常: "OK",
+                    破損: "Broken",
+                    欠落: "Missing",
+                    "全件 読込テスト": "Test all",
+                    閉じる: "Close",
+                    "閉じる（Esc）": "Close (Esc)",
+                    // 設定
+                    設定: "Settings",
+                    設定を閉じる: "Close settings",
+                    慣性モード: "Inertia mode",
+                    "接地＝足を地面に固定し、腰から上が揺れる（重さは腰中心）。空中＝全身が自由にトレイル。":
+                        "Ground = feet planted, sways from the waist. Air = whole body trails freely.",
+                    接地: "Ground",
+                    空中: "Air",
+                    背景の自動調整: "Auto background",
+                    "スキンの明暗に合わせて背景色を最適化（暗い→うっすら灰色 / 明るい→黒 / 混在→黒地にうっすら灰色）。":
+                        "Match background to the skin (dark → faint gray / light → black / mixed → dark gray).",
+                    自動: "Auto",
+                    ポーズの固定操作: "Pose fix control",
+                    "右クリック式＝ドラッグ調整中に右クリックで固定/解除・空きで右ダブルクリックで全解除。 Shift式＝Shiftを押しながら離すと固定（右クリック解除も併用可）。":
+                        "Right-click: fix/release a part while adjusting; double right-click empty to release all. Shift: fix on release while holding Shift.",
+                    右クリック式: "Right-click",
+                    "Shift式": "Shift",
+                    // namemc
+                    戻る: "Back",
+                    進む: "Forward",
+                    "namemc ホーム": "namemc home",
+                    ホーム: "Home",
+                    再読み込み: "Reload",
+                    広告ブロック: "Ad block",
+                    "広告ブロック（既定オフ・サイトへの配慮）":
+                        "Ad block (off by default)",
+                    "スキンページの「Download」でPNGを保存すると、このアプリのスキンフォルダに自動取り込みされます。":
+                        "Saving a skin PNG via “Download” imports it into this app’s skin folder.",
+                    // ポーズ全解除
+                    ポーズを全解除: "Release all poses",
+                    "固定したポーズをすべて解除して、元の位置へ戻します。よろしいですか？":
+                        "Release all fixed poses and return to the original position?",
+                    次回以降表示しない: "Don’t show again",
+                    キャンセル: "Cancel",
+                    全解除: "Release all",
+                    // 動的（tr で使用）
+                    "読み込み中…": "Loading…",
+                    "描画中…": "Rendering…",
+                    "試着中…": "Trying on…",
+                    該当なし: "No matches",
+                    新規フォルダ: "New folder",
+                    表示できるスキンがありません: "No skins to display",
+                    名前を変更: "Rename",
+                    フォルダを削除: "Delete folder",
+                    お気に入りに追加: "Add to favorites",
+                    お気に入りを解除: "Remove from favorites",
+                    フォルダから出す: "Remove from folder",
+                };
+                const tr = (s) => (lang === "en" && EN[s] != null ? EN[s] : s);
+                function applyLang() {
+                    if (lang !== "en") return;
+                    ["title", "aria-label", "placeholder"].forEach((attr) => {
+                        document
+                            .querySelectorAll("[" + attr + "]")
+                            .forEach((el) => {
+                                const v = el.getAttribute(attr);
+                                if (EN[v] != null) el.setAttribute(attr, EN[v]);
+                            });
+                    });
+                    document.querySelectorAll("body *").forEach((el) => {
+                        if (el.tagName === "SCRIPT" || el.tagName === "STYLE")
+                            return;
+                        el.childNodes.forEach((n) => {
+                            if (n.nodeType !== 3) return;
+                            const t = n.nodeValue.trim();
+                            if (t && EN[t] != null)
+                                n.nodeValue = n.nodeValue.replace(t, EN[t]);
+                        });
+                    });
+                }
+                applyLang();
                 const listEl = $("list"),
                     countEl = $("count"),
                     searchEl = $("search");
@@ -1610,7 +1769,7 @@
                 // ---- 一時的に「試着」（ギャラリー外プレビュー） ----
                 function previewSkin(dataURL, name) {
                     overlay.classList.remove("hidden");
-                    overlayMsg.textContent = "試着中…";
+                    overlayMsg.textContent = tr("試着中…");
                     viewer
                         .loadSkin(dataURL, { model: modelSel.value })
                         .then(() => {
@@ -2808,7 +2967,7 @@
                         Math.random().toString(36).slice(2, 5);
                     folders.unshift({
                         id,
-                        name: "新規フォルダ",
+                        name: tr("新規フォルダ"),
                         expanded: true,
                     });
                     saveFolders();
@@ -2958,11 +3117,11 @@
                         const f = folders.find((fo) => fo.id === focused.id);
                         if (!f) return;
                         items.push({
-                            label: "名前を変更",
+                            label: tr("名前を変更"),
                             action: () => startRename(f.id),
                         });
                         items.push({
-                            label: "フォルダを削除",
+                            label: tr("フォルダを削除"),
                             action: () => deleteFolder(f.id),
                         });
                     } else if (focused.type === "skin") {
@@ -2970,8 +3129,8 @@
                         if (!e || e.valid === false) return;
                         items.push({
                             label: isFav(e)
-                                ? "お気に入りを解除"
-                                : "お気に入りに追加",
+                                ? tr("お気に入りを解除")
+                                : tr("お気に入りに追加"),
                             action: () => {
                                 setFav(e, !isFav(e));
                                 if (focused.i === current) updateFavBtn();
@@ -2983,13 +3142,16 @@
                         folders.forEach((f) => {
                             if (f.id !== cur)
                                 items.push({
-                                    label: "「" + f.name + "」へ移動",
+                                    label:
+                                        lang === "en"
+                                            ? "Move to “" + f.name + "”"
+                                            : "「" + f.name + "」へ移動",
                                     action: () => setSkinFolder(e, f.id),
                                 });
                         });
                         if (cur)
                             items.push({
-                                label: "フォルダから出す",
+                                label: tr("フォルダから出す"),
                                 action: () => setSkinFolder(e, null),
                             });
                     } else return;
@@ -3075,7 +3237,7 @@
                     const id = newFolderId();
                     folders.unshift({
                         id,
-                        name: "新規フォルダ",
+                        name: tr("新規フォルダ"),
                         expanded: true,
                     });
                     folderMap[favId(dst)] = id;
@@ -3126,7 +3288,7 @@
                         "×" +
                         (e.h || "?");
                     overlay.classList.remove("hidden");
-                    overlayMsg.textContent = "描画中…";
+                    overlayMsg.textContent = tr("描画中…");
                     viewer
                         .loadSkin(e.data, { model: modelSel.value })
                         .then(() => {
@@ -3207,7 +3369,7 @@
                     if (!rows.length) {
                         const d = document.createElement("div");
                         d.className = "empty-list";
-                        d.textContent = "該当なし";
+                        d.textContent = tr("該当なし");
                         listEl.appendChild(d);
                     }
                     let shown = 0;
@@ -3313,7 +3475,9 @@
                             kb(e.size) +
                             "</span>" +
                             (e.valid === false
-                                ? '<span class="badge bad">破損</span>'
+                                ? '<span class="badge bad">' +
+                                  tr("破損") +
+                                  "</span>"
                                 : "");
                         meta.appendChild(nm);
                         meta.appendChild(sub);
@@ -3390,7 +3554,7 @@
                     countEl.textContent =
                         q || favOnly
                             ? shown + " / " + entries.length
-                            : entries.length + " 件";
+                            : entries.length + (lang === "en" ? " items" : " 件");
                 }
 
                 // ---- 監査パネル ----
@@ -4318,7 +4482,7 @@
                     const first = entries.findIndex((e) => e.valid !== false);
                     if (first >= 0) loadSkin(first);
                     else
-                        overlayMsg.textContent = "表示できるスキンがありません";
+                        overlayMsg.textContent = tr("表示できるスキンがありません");
                 }
                 if (E && E.getSkins) {
                     // Electron: ライブ走査。JSONファイルをソース・オブ・トゥルースとして採用し、以後は自動保存。
