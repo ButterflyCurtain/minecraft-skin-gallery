@@ -64,6 +64,8 @@ Azure でパブリッククライアントを登録（個人MSアカウント対
 
 スキンPNG・生成物（`*.png` / `skins-data.js` / `skins.json`）・個人データ・トークンは `.gitignore` 済み。
 
+依存関係の詳細は [DEPENDENCIES.md](DEPENDENCIES.md) を参照。
+
 ## ライセンス
 
 [MIT](LICENSE)
