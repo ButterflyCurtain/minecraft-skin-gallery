@@ -3762,23 +3762,92 @@
                         updateFavBtn();
                     });
                 }
+                // ランチャー用の 288x384 モデルプレビューをオフスクリーンで生成（純正と同じ規格。
+                // 64x64等の規格外だと新版ランチャーが起動時クラッシュするため必須）。
+                let _pvCanvas = null,
+                    _pvViewer = null;
+                function renderModelPreview(skinDataURI, slim) {
+                    return new Promise((resolve) => {
+                        try {
+                            if (!_pvViewer) {
+                                _pvCanvas = document.createElement("canvas");
+                                _pvCanvas.width = 288;
+                                _pvCanvas.height = 384;
+                                _pvViewer = new skinview3d.SkinViewer({
+                                    canvas: _pvCanvas,
+                                    width: 288,
+                                    height: 384,
+                                    preserveDrawingBuffer: true,
+                                });
+                                _pvViewer.fov = 40;
+                                _pvViewer.zoom = 0.9;
+                                _pvViewer.autoRotate = false;
+                                _pvViewer.animation = null;
+                            }
+                            _pvViewer
+                                .loadSkin(skinDataURI, {
+                                    model: slim ? "slim" : "default",
+                                })
+                                .then(() => {
+                                    let n = 0;
+                                    const grab = () => {
+                                        if (n++ < 3) {
+                                            requestAnimationFrame(grab);
+                                            return;
+                                        }
+                                        try {
+                                            resolve(
+                                                _pvCanvas.toDataURL("image/png"),
+                                            );
+                                        } catch (_) {
+                                            resolve(null);
+                                        }
+                                    };
+                                    requestAnimationFrame(grab);
+                                })
+                                .catch(() => resolve(null));
+                        } catch (_) {
+                            resolve(null);
+                        }
+                    });
+                }
                 function addCurrentToLauncher() {
                     if (current < 0 || previewing || !E) return;
-                    const e = entries[current];
-                    E.launcherAdd([
-                        {
-                            name: displayName(e.file),
-                            skinImage: e.data,
-                            slim: currentSlim(),
-                        },
-                    ]).then((res) => {
-                        if (res && res.ok)
-                            flashIcon(launcherBtn, res.added > 0 ? "✓" : "＝");
-                        else
+                    const e = entries[current],
+                        slim = currentSlim();
+                    const old = launcherBtn.textContent;
+                    launcherBtn.disabled = true;
+                    launcherBtn.textContent = "…";
+                    renderModelPreview(e.data, slim).then((modelImage) => {
+                        launcherBtn.disabled = false;
+                        launcherBtn.textContent = old;
+                        if (!modelImage) {
                             alert(
-                                "ランチャーへの追加に失敗しました: " +
-                                    ((res && res.error) || "不明"),
+                                "プレビュー生成に失敗したため、ランチャー追加を中止しました（壊れたエントリは書きません）。",
                             );
+                            return;
+                        }
+                        E.launcherAdd([
+                            {
+                                name: displayName(e.file),
+                                skinImage: e.data,
+                                slim,
+                                modelImage,
+                            },
+                        ]).then((res) => {
+                            if (res && res.ok && res.added > 0)
+                                flashIcon(launcherBtn, "✓");
+                            else if (res && res.ok && res.invalid > 0)
+                                alert(
+                                    "プレビューが規格外のため追加しませんでした（288x384必須）。",
+                                );
+                            else if (res && res.ok) flashIcon(launcherBtn, "＝");
+                            else
+                                alert(
+                                    "ランチャーへの追加に失敗しました: " +
+                                        ((res && res.error) || "不明"),
+                                );
+                        });
                     });
                 }
                 function uploadCurrent() {

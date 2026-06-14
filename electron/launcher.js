@@ -31,6 +31,10 @@ function dataUriToBuf(dataUri) {
   const i = String(dataUri).indexOf(',');
   return Buffer.from(i >= 0 ? dataUri.slice(i + 1) : dataUri, 'base64');
 }
+function pngDims(buf) {
+  try { return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) }; }
+  catch (_) { return null; }
+}
 
 // skins: [{ name, skinImage(dataURI), slim(bool), modelImage?(dataURI) }]
 function addSkins(skins) {
@@ -54,12 +58,17 @@ function addSkins(skins) {
   }
 
   const now = new Date().toISOString();
-  let added = 0, skipped = 0;
+  let added = 0, skipped = 0, invalid = 0;
   for (const s of skins) {
     if (!s || !s.skinImage) continue;
     const buf = dataUriToBuf(s.skinImage);
     const textureId = crypto.createHash('sha256').update(buf).digest('hex');
     if (existing.has(textureId)) { skipped++; continue; }
+    // modelImage は純正と同じ 288x384 のプレビューPNG必須。
+    // 64x64等の規格外を書くと新版ランチャーが起動時にクラッシュ(0x1)するため弾く。
+    const mi = s.modelImage;
+    const md = mi ? pngDims(dataUriToBuf(mi)) : null;
+    if (!md || md.w !== 288 || md.h !== 384) { invalid++; continue; }
     const id = 'skin_' + (++maxN);
     lib.customSkins[id] = {
       id,
@@ -68,8 +77,7 @@ function addSkins(skins) {
       created: now,
       updated: now,
       skinImage: s.skinImage,
-      // モデルプレビュー: 渡されればそれを、無ければスキン画像を仮置き（ランチャーが再生成する）
-      modelImage: s.modelImage || s.skinImage,
+      modelImage: mi,           // 288x384 の正規プレビュー
       textureId,
     };
     existing.add(textureId);
@@ -77,7 +85,7 @@ function addSkins(skins) {
   }
 
   if (added > 0) fs.writeFileSync(p, JSON.stringify(lib, null, 2));
-  return { ok: true, added, skipped, path: p };
+  return { ok: true, added, skipped, invalid, path: p };
 }
 
 module.exports = { addSkins, readLibrary, libraryPath, minecraftDir };
