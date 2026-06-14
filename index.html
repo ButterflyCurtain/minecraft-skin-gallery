@@ -1298,6 +1298,36 @@
                             <span class="dot"></span>自動
                         </button>
                     </div>
+                    <div class="set-row">
+                        <div class="set-main">
+                            <div class="set-k">ポーズの固定操作</div>
+                            <div class="set-d">
+                                右クリック式＝ドラッグ調整中に右クリックで固定/解除・空きで右ダブルクリックで全解除。
+                                Shift式＝Shiftを押しながら離すと固定（右クリック解除も併用可）。
+                            </div>
+                        </div>
+                        <div
+                            class="seg"
+                            id="poseCtrlSeg"
+                            role="group"
+                            aria-label="ポーズの固定操作"
+                        >
+                            <button
+                                class="seg-b"
+                                data-pc="rightclick"
+                                aria-pressed="true"
+                            >
+                                右クリック式
+                            </button>
+                            <button
+                                class="seg-b"
+                                data-pc="shift"
+                                aria-pressed="false"
+                            >
+                                Shift式
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1813,6 +1843,7 @@
                     autoBg: true,
                     controlsH: 0,
                     skipPoseWarn: false,
+                    poseControl: "rightclick", // rightclick=右クリックで固定/解除 / shift=Shift離しで固定
                 }; // controlsH:0=自動高さ
                 try {
                     Object.assign(
@@ -1993,6 +2024,7 @@
                     rightLeg: 0.35,
                 };
                 const GROUND_PIVOT_Y = -3; // 地面慣性の支点(ワールドY)。上寄り＝お尻/腰が振れるボトムヘビー(B)
+                const AIR_PIVOT_Y = -12; // 空中の支点＝尾てい骨/腰。ここを吊り点に各部位が繋がったまま重力で垂れる
                 // pivotY=支点のワールドY（既定 -12=腰/底面。上げるほどお尻が振れる）
                 function applyPositionFollow(sk, ground, pivotY) {
                     if (!sk.body) return;
@@ -2319,7 +2351,7 @@
                             };
                             if (part === "body")
                                 setBodyGrabHalf(ev.clientX, ev.clientY);
-                            poseFixed[part] = true; // 掴んでいる間は保持（離すとその位置で固定）
+                            // 固定状態は変えない（固定はオプションに応じて 右クリック or Shift離しで）
                             viewer.controls.enabled = false;
                             wrap.classList.add("grabbing");
                             try {
@@ -2328,10 +2360,12 @@
                             ev.preventDefault();
                             ev.stopImmediatePropagation();
                         } else if (ev.button === 2) {
-                            if (part) {
-                                // 部位を右クリック＝その部位だけ解除（びよん）
-                                poseFixed[part] = false;
-                                poseTarget[part] = { x: 0, y: 0, z: 0 };
+                            // 掴み中ならその部位、でなければクリックした部位の固定をトグル（固定↔解除びよん）
+                            const tp = grabbed || part;
+                            if (tp) {
+                                poseFixed[tp] = !poseFixed[tp];
+                                if (!poseFixed[tp])
+                                    poseTarget[tp] = { x: 0, y: 0, z: 0 };
                             } else {
                                 // 空きで右ダブルクリック＝全解除（たたんっ）
                                 const t = performance.now();
@@ -2349,9 +2383,12 @@
                 window.addEventListener("pointermove", (ev) => {
                     if (grabbed) setGrabTarget(ev);
                 });
-                window.addEventListener("pointerup", () => {
+                window.addEventListener("pointerup", (ev) => {
                     if (!grabbed) return;
-                    poseFixed[grabbed] = true; // 離した位置で固定
+                    // Shift式：Shift離しで固定。右クリック式：固定は右クリックで行うので離しただけでは固定しない。
+                    if (settings.poseControl === "shift" && ev.shiftKey)
+                        poseFixed[grabbed] = true;
+                    if (!poseFixed[grabbed]) poseTarget[grabbed] = { x: 0, y: 0, z: 0 }; // 未固定は離すと0へ（びよん）
                     grabbed = null;
                     viewer.controls.enabled = true;
                     wrap.classList.remove("grabbing");
@@ -2511,11 +2548,14 @@
                                 sk.head.rotation.y += AIR_DROOP.head.y;
                             }
                         }
+                        // 接地/空中とも位置追従ON（各部位が繋がる）。支点だけ切替：接地=肩寄り(お尻が振れる) / 空中=尾てい骨(吊られて垂れる)
                         applyPositionFollow(
                             sk,
-                            settings.inertiaMode === "ground",
-                            GROUND_PIVOT_Y,
-                        ); // 支点を上寄りにして お尻/腰が振れるボトムヘビーに（B）。脚は弱追従で床寄りに残す
+                            true,
+                            settings.inertiaMode === "ground"
+                                ? GROUND_PIVOT_Y
+                                : AIR_PIVOT_Y,
+                        );
                     } else if (sk) {
                         // 読み込み直後のひと呼吸（or 静止）：物理は当てず素のポーズ。復帰時にスナップしないよう状態を0へ。
                         limbNames.forEach((n) => {
@@ -4138,6 +4178,16 @@
                             settings.autoBg ? "true" : "false",
                         );
                     }
+                    document
+                        .querySelectorAll("#poseCtrlSeg .seg-b")
+                        .forEach((b) => {
+                            const on = b.dataset.pc === settings.poseControl;
+                            b.classList.toggle("on", on);
+                            b.setAttribute(
+                                "aria-pressed",
+                                on ? "true" : "false",
+                            );
+                        });
                 }
 
                 // ---- サイドバー幅をドラッグで調整 ----
@@ -4238,6 +4288,13 @@
                 document.querySelectorAll("#modeSeg .seg-b").forEach((b) => {
                     b.addEventListener("click", () => {
                         settings.inertiaMode = b.dataset.mode;
+                        saveSettings();
+                        applySettings();
+                    });
+                });
+                document.querySelectorAll("#poseCtrlSeg .seg-b").forEach((b) => {
+                    b.addEventListener("click", () => {
+                        settings.poseControl = b.dataset.pc;
                         saveSettings();
                         applySettings();
                     });
