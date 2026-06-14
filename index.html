@@ -1800,35 +1800,39 @@
                     "rightLeg",
                 ];
                 // 追従強度（1=接合点に完全追従 / <1=控えめにスライド）。腕は滑りが目立つので弱め。
+                // 位置追従の強さ。脚は床に残したいので弱め（=部分接地・少し滑る摩擦感）。
                 const FOLLOW_K = {
                     head: 0.8,
                     leftArm: 0.55,
                     rightArm: 0.55,
-                    leftLeg: 1.0,
-                    rightLeg: 1.0,
+                    leftLeg: 0.35,
+                    rightLeg: 0.35,
                 };
-                function applyPositionFollow(sk, ground) {
+                const GROUND_PIVOT_Y = -3; // 地面慣性の支点(ワールドY)。上寄り＝お尻/腰が振れるボトムヘビー(B)
+                // pivotY=支点のワールドY（既定 -12=腰/底面。上げるほどお尻が振れる）
+                function applyPositionFollow(sk, ground, pivotY) {
                     if (!sk.body) return;
+                    if (pivotY == null) pivotY = -12;
                     if (ground) {
                         const q = sk.body.quaternion;
-                        // 体：腰(底面)支点で回す＝底面のワールド位置を固定するよう平行移動
-                        const bb = getBase(sk.body),
-                            wl = [0, -6, 0],
-                            rw = qRot(q, wl[0], wl[1], wl[2]);
+                        const bb = getBase(sk.body);
+                        // 体：支点(ワールドpivotY)を固定して回すよう平行移動
+                        const wlY = pivotY - bb.y, // body-local の支点Y
+                            rw = qRot(q, 0, wlY, 0);
                         sk.body.position.set(
-                            bb.x + (wl[0] - rw[0]),
-                            bb.y + (wl[1] - rw[1]),
-                            bb.z + (wl[2] - rw[2]),
+                            bb.x - rw[0],
+                            bb.y + (wlY - rw[1]),
+                            bb.z - rw[2],
                         );
-                        // 他部位：腰回転による接合点の移動ぶんだけ平行移動（回転は触らない＝フロート維持）
+                        // 他部位：支点まわりの回転による接合点移動ぶんだけ平行移動（回転は独立＝フロート維持）
                         FOLLOW.forEach((n) => {
                             const p = sk[n];
                             if (!p) return;
                             const b = getBase(p),
                                 k = FOLLOW_K[n] || 1;
-                            const ax = b.x - WAIST[0],
-                                ay = b.y - WAIST[1],
-                                az = b.z - WAIST[2];
+                            const ax = b.x,
+                                ay = b.y - pivotY,
+                                az = b.z;
                             const r = qRot(q, ax, ay, az);
                             p.position.set(
                                 b.x + (r[0] - ax) * k,
@@ -2257,7 +2261,8 @@
                         applyPositionFollow(
                             sk,
                             settings.inertiaMode === "ground",
-                        ); // 各部位の位置を腰回転に追従（接地時）
+                            GROUND_PIVOT_Y,
+                        ); // 支点を上寄りにして お尻/腰が振れるボトムヘビーに（B）。脚は弱追従で床寄りに残す
                     } else if (sk) {
                         // 読み込み直後のひと呼吸（or 静止）：物理は当てず素のポーズ。復帰時にスナップしないよう状態を0へ。
                         limbNames.forEach((n) => {
