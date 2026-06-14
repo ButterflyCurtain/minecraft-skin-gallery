@@ -1747,6 +1747,8 @@
                     wPitP = 0,
                     renderT = 0;
                 let physicsSettleUntil = 0; // スキン読み込み直後はこの時刻まで物理を当てない（連続送りで毎回挟まないため）
+                let animFade = null; // 動作切替のクロスフェード状態 {t0, from:{部位:{x,y,z}}}
+                const ANIM_FADE_MS = 320; // 切替補間時間
                 const wrapPI = (d) => {
                     while (d > Math.PI) d -= 2 * Math.PI;
                     while (d < -Math.PI) d += 2 * Math.PI;
@@ -2191,6 +2193,19 @@
                         prop: m.legProp,
                     };
                     const sk = viewer.playerObject && viewer.playerObject.skin;
+                    // 動作切替のクロスフェード：凍結した旧ポーズ → 新アニメへ重み付き補間（両方向）。
+                    if (sk && animFade) {
+                        const w = Math.min(1, (now - animFade.t0) / ANIM_FADE_MS);
+                        ["body", "leftArm", "rightArm", "leftLeg", "rightLeg", "head"].forEach((n) => {
+                            const p = sk[n],
+                                f = animFade.from[n];
+                            if (!p || !f) return;
+                            p.rotation.x = f.x + (p.rotation.x - f.x) * w;
+                            p.rotation.y = f.y + (p.rotation.y - f.y) * w;
+                            p.rotation.z = f.z + (p.rotation.z - f.z) * w;
+                        });
+                        if (w >= 1) animFade = null;
+                    }
                     if (sk && dt > 0 && now >= physicsSettleUntil && poseMode) {
                         // ポーズ/インスペクト：慣性とは排他。掴んだ部位を動かし、離すと固定 or びよん復帰。
                         applyPoseFrame(sk, dt);
@@ -2312,12 +2327,19 @@
                     fly: () => new skinview3d.FlyingAnimation(),
                     none: () => null,
                 };
-                // TODO(2): 動作切替のクロスフェード。今は applyAnim で即差し替えのため、A→飛ぶ等は飛ぶ側の
-                //   progressランプで入りだけ滑らか・逆や他の切替はスナップする。切替時に直前ポーズを凍結し、
-                //   新アニメを数百msで重み付き補間（両方向）して滑らかにつなぐ。
+                // 動作切替のクロスフェード実装済み（applyAnim で旧ポーズ凍結→render で ANIM_FADE_MS 補間）。
                 // TODO(4): 公開準備として README 更新 / LICENSE(MIT) 追加。
                 function applyAnim() {
                     const f = ANIMS[animSel.value] || ANIMS.walk;
+                    // クロスフェード：今表示中のポーズを凍結し、新アニメへ補間（両方向のイーズ）
+                    const sk = viewer.playerObject && viewer.playerObject.skin;
+                    if (sk) {
+                        animFade = { t0: performance.now(), from: {} };
+                        ["body", "leftArm", "rightArm", "leftLeg", "rightLeg", "head"].forEach((n) => {
+                            const p = sk[n];
+                            if (p) animFade.from[n] = { x: p.rotation.x, y: p.rotation.y, z: p.rotation.z };
+                        });
+                    }
                     viewer.animation = f();
                     if (viewer.animation) viewer.animation.speed = 1;
                 }
