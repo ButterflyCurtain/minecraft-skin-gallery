@@ -1,6 +1,6 @@
 {
   "name": "skin-gallery",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Minecraft skin gallery — 3Dビューア・整理・ランチャー連携",
   "main": "electron/main.js",
   "scripts": {

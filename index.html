@@ -464,34 +464,23 @@ select:hover{border-color:var(--line-strong)}
   });
   wrap.addEventListener('mouseleave',()=>{ gazeTargetYaw=0; gazeTargetPitch=0; });
 
-  // ---- 慣性：カメラを振ると頭・体・腕・脚が遅れて追従し、止めると揺り戻す（バネ-ダンパ） ----
-  // 駆動信号はカメラの方位角(az)・極角(polar)の角速度。WASDでもマウスドラッグでも同じ経路で効く。
-  // マウスドラッグの「激しさ」＝角速度の大きさ なので、速く回すほど大きく振れる（自然にスケール）。
-  // さらに NONLIN 項で激しいときだけ非線形に強まる（ご要望の「激しさに応じて慣性強度が変わる」）。
-  // 係数: y=方位ラグ x=ピッチラグ z=横スウェイ(腕・脚) k=バネ剛性(大きいほど硬い) c=減衰
-  const INERTIA = {
-    head:     {y:0.55, x:0.42, z:0.00, k:15, c:7.2},
-    body:     {y:0.26, x:0.16, z:0.00, k:22, c:9.0},
-    leftArm:  {y:0.66, x:0.26, z:0.48, k:11, c:5.6},
-    rightArm: {y:0.66, x:0.26, z:-0.48,k:11, c:5.6},
-    leftLeg:  {y:0.30, x:0.14, z:0.16, k:14, c:6.6},
-    rightLeg: {y:0.30, x:0.14, z:-0.16,k:14, c:6.6},
-  };
-  const INERTIA_NONLIN=0.9;   // 激しさによる非線形増し（0で線形）
-  const INERTIA_CLAMP=0.7;    // 各軸の振れ角の上限(rad)・暴れ防止
-  const PARTS=['head','body','leftArm','rightArm','leftLeg','rightLeg'];
-  const spring={};            // spring[part][axis] = {p,v}
-  PARTS.forEach(p=>{spring[p]={y:{p:0,v:0},x:{p:0,v:0},z:{p:0,v:0}};});
+  // ---- 慣性：カメラを振ると全身が遅れて追従し、止めると元の位置へ戻る（バネ）。----
+  // playerObject へ毎フレーム“絶対”指定（加算しない）ので累積・暴走せず、目標が0に戻れば必ず0へ収束する。
+  //   ※以前は各パーツへ += していたが、アニメが触らない軸（体の.y等・静止時の全軸）が累積して暴走していた。
+  // 駆動はカメラ方位角(az)・極角(polar)の角速度。WASD/マウスドラッグ共通で、激しいほど大きく振れる。
+  const INER = { bodyYaw:0.10, bodyPitch:0.07, headYaw:0.08, headPitch:0.05,
+                 k:40, c:13, clamp:0.6, nonlin:0.15 };   // c≈2√k で過減衰ぎみ＝揺れすぎない
   let azPrev=null, polPrev=null, wYaw=0, wPit=0, renderT=0;
+  const sBody={y:{p:0,v:0},x:{p:0,v:0}}, sHead={y:{p:0,v:0},x:{p:0,v:0}};
   const wrapPI=d=>{ while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI; return d; };
-  function step(s, drive, k, c, dt){     // 1軸ぶんのバネ積分。drive中は -drive/k へ引かれ、止めると0へ揺り戻す
-    s.v += (-k*s.p - c*s.v - drive)*dt;
+  function spr(s, target, dt){           // 目標(=ラグ)へ向かうバネ。目標が0に戻れば必ず0へ収束
+    s.v += (INER.k*(target-s.p) - INER.c*s.v)*dt;
     s.p += s.v*dt;
-    if(s.p> INERTIA_CLAMP){s.p= INERTIA_CLAMP; if(s.v>0)s.v=0;}
-    if(s.p<-INERTIA_CLAMP){s.p=-INERTIA_CLAMP; if(s.v<0)s.v=0;}
+    if(s.p> INER.clamp) s.p= INER.clamp;
+    if(s.p<-INER.clamp) s.p=-INER.clamp;
     return s.p;
   }
-  const drv=w=>w + INERTIA_NONLIN*w*Math.abs(w);   // 激しさで非線形に増す駆動信号
+  const sig=w=>w + INER.nonlin*w*Math.abs(w);   // 激しさで非線形に増す駆動
 
   viewer.render=(base=>()=>{
     const now=performance.now();
@@ -501,34 +490,27 @@ select:hover{border-color:var(--line-strong)}
     const c=viewer.controls;
     const az=c.getAzimuthalAngle(), pol=c.getPolarAngle();
     if(azPrev!==null && dt>0){
-      const rawY=wrapPI(az-azPrev)/dt, rawP=(pol-polPrev)/dt;
-      wYaw += (rawY-wYaw)*0.5;            // 軽く平滑化
-      wPit += (rawP-wPit)*0.5;
+      wYaw += ((wrapPI(az-azPrev)/dt)-wYaw)*0.4;   // 平滑化
+      wPit += (((pol-polPrev)/dt)-wPit)*0.4;
     }
     azPrev=az; polPrev=pol;
-    const sigY=drv(wYaw), sigP=drv(wPit);
+    const sigY=sig(wYaw), sigP=sig(wPit);
 
-    // 視線（頭は絶対指定）
+    // 視線
     gazeYaw+=(gazeTargetYaw-gazeYaw)*GAZE_EASE;
     gazePitch+=(gazeTargetPitch-gazePitch)*GAZE_EASE;
 
-    const sk=viewer.playerObject&&viewer.playerObject.skin;
-    if(sk && dt>0){
-      PARTS.forEach(name=>{
-        const part=sk[name], cfg=INERTIA[name], s=spring[name];
-        if(!part)return;
-        const oy=step(s.y, cfg.y*sigY, cfg.k, cfg.c, dt);
-        const ox=step(s.x, cfg.x*sigP, cfg.k, cfg.c, dt);
-        const oz=cfg.z?step(s.z, cfg.z*sigY, cfg.k, cfg.c, dt):0;
-        if(name==='head'){           // 視線にラグを加算
-          part.rotation.y=gazeYaw+oy; part.rotation.x=gazePitch+ox;
-        }else{                        // アニメが設定した値に加算
-          part.rotation.y+=oy; part.rotation.x+=ox;
-        }
-        if(oz) part.rotation.z+=oz;
-      });
-    } else if(sk && sk.head){
-      sk.head.rotation.y=gazeYaw; sk.head.rotation.x=gazePitch;
+    const po=viewer.playerObject;
+    if(po && dt>0){
+      // 全身ラグ（絶対指定＝累積しない）。目標は -結合×角速度＝カメラと逆向きにトレイル
+      po.rotation.y = spr(sBody.y, -INER.bodyYaw*sigY, dt);
+      po.rotation.x = spr(sBody.x, -INER.bodyPitch*sigP, dt);
+      // 頭は視線＋追加ラグ（こちらも絶対指定で安全）
+      const hy=spr(sHead.y, -INER.headYaw*sigY, dt), hx=spr(sHead.x, -INER.headPitch*sigP, dt);
+      const head=po.skin&&po.skin.head;
+      if(head){ head.rotation.y=gazeYaw+hy; head.rotation.x=gazePitch+hx; }
+    } else if(po && po.skin && po.skin.head){
+      po.skin.head.rotation.y=gazeYaw; po.skin.head.rotation.x=gazePitch;
     }
     base();
   })(viewer.render.bind(viewer));
