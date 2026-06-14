@@ -1844,6 +1844,8 @@
                 let physicsSettleUntil = 0; // スキン読み込み直後はこの時刻まで物理を当てない（連続送りで毎回挟まないため）
                 let animFade = null; // 動作切替のクロスフェード状態 {t0, from:{部位:{x,y,z}}}
                 const ANIM_FADE_MS = 320; // 切替補間時間
+                let navLast = 0; // 矢印キー送りのスロットル（長押しで速すぎないように）
+                const NAV_INTERVAL = 150; // 連続送りの最小間隔(ms)
                 const wrapPI = (d) => {
                     while (d > Math.PI) d -= 2 * Math.PI;
                     while (d < -Math.PI) d += 2 * Math.PI;
@@ -3537,6 +3539,13 @@
                     }
 
                     if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+                        // 長押し（キーリピート）は間隔をあけて送る。詰まってロードが追いつかないのを防ぐ。
+                        const tnav = performance.now();
+                        if (ev.repeat && tnav - navLast < NAV_INTERVAL) {
+                            ev.preventDefault();
+                            return;
+                        }
+                        navLast = tnav;
                         const rows = visibleRows();
                         if (!rows.length) return;
                         let pos = rows.findIndex((r) =>
