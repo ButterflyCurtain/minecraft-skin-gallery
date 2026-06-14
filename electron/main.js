@@ -140,6 +140,7 @@ ipcMain.handle('skin:upload', async (_e, { dataUri, slim }) => {
 });
 ipcMain.handle('auth:available', () => auth.hasClientId(APP_DIR));
 ipcMain.handle('open:external', (_e, url) => { shell.openExternal(url); });
+ipcMain.handle('dir:open', () => shell.openPath(APP_DIR));   // スキンフォルダをOSのファイラで開く
 
 app.whenReady().then(() => { setupNamemcSession(); createWindow(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

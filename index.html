@@ -996,6 +996,15 @@
                     >
                         ◍ namemc
                     </button>
+                    <button
+                        class="linkbtn elec"
+                        id="openDirBtn"
+                        title="スキンフォルダをエクスプローラで開く"
+                        aria-label="スキンフォルダを開く"
+                        hidden
+                    >
+                        📁 フォルダ
+                    </button>
                     <input
                         type="file"
                         id="importFile"
@@ -3845,6 +3854,11 @@
                                 );
                             });
                         });
+                    const openDirBtn = $("openDirBtn");
+                    if (openDirBtn && E.openSkinDir)
+                        openDirBtn.addEventListener("click", () =>
+                            E.openSkinDir(),
+                        );
                     // ---- namemc ブラウザ（webview） ----
                     const nmScrim = $("namemcScrim"),
                         nmView = $("nmView"),
