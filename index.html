@@ -107,6 +107,8 @@ body.row-resizing{cursor:row-resize;user-select:none}
 .iconbtn:disabled{opacity:.35;cursor:default}
 .iconbtn:disabled:hover{border-color:var(--line);color:var(--txt-dim)}
 .canvas-wrap{flex:1;position:relative;min-height:0}
+.canvas-wrap.pose{cursor:grab}
+.canvas-wrap.grabbing,.canvas-wrap.grabbing #viewer{cursor:grabbing}
 .canvas-wrap.dragover::after{content:"";position:absolute;inset:10px;border:1.5px dashed var(--accent);
   border-radius:10px;pointer-events:none;z-index:5}
 #viewer{display:block;width:100%;height:100%}
@@ -217,6 +219,7 @@ select:hover{border-color:var(--line-strong)}
         <button class="iconbtn" id="favBtn" title="お気に入りに追加/解除（Shift+S）" aria-label="お気に入りに追加または解除（ショートカット Shift+S）" aria-pressed="false" disabled>☆</button>
         <button class="iconbtn" id="copyBtn" title="ファイル名をコピー" aria-label="ファイル名をコピー" disabled>⧉</button>
         <button class="iconbtn" id="swapBtn" title="前に見ていたスキンと入れ替え" aria-label="前に見ていたスキンと入れ替え" disabled>⇄</button>
+        <button class="iconbtn" id="poseBtn" title="ポーズ/インスペクト：部位を掴んで動かす（離す=びよん復帰 / Shift離す=固定 / Ctrl二度押し=全解除）" aria-label="ポーズ/インスペクトモード" aria-pressed="false">✋</button>
         <button class="iconbtn elec" id="launcherBtn" title="このスキンをマインクラフトランチャーの保存済みスキンに追加（認証不要）" aria-label="ランチャーの保存済みスキンに追加" disabled hidden>⊕</button>
         <button class="iconbtn elec" id="uploadBtn" title="Minecraftプロフィールに直接アップロード（要Microsoftログイン）" aria-label="Minecraftプロフィールにアップロード" disabled hidden>☁</button>
         <button class="iconbtn" id="mcBtn" title="minecraft.net/profile を開く（ログイン済みのブラウザ前提）" aria-label="minecraft.net のプロフィールを開く">↗</button>
@@ -627,6 +630,85 @@ select:hover{border-color:var(--line-strong)}
     });
   }
 
+  // ---- ポーズ/インスペクト：部位を掴んで動かす。離すと固定 or びよん復帰。Shift固定/Ctrl二度押しで全解除。----
+  // 慣性とは排他（poseMode中はrenderでこちらを実行）。applied[n] に載せるので restorePose が累積を防ぐ。
+  const poseBtn=$('poseBtn');
+  const POSE_LIMBS=['head','body','leftArm','rightArm','leftLeg','rightLeg'];
+  const POSE_SAMPLE={head:[0,2,0],body:[0,0,0],leftArm:[0,-6,0],rightArm:[0,-6,0],leftLeg:[0,-6,0],rightLeg:[0,-6,0]};
+  // ドラッグ(画面px dx,dy)→回転(rad)のマッピング。lo/hiでクランプ。腕zは外向き符号を左右反転。
+  const POSE_MAP={
+    head:     {x:{from:'dy',k:0.006,lo:-0.8,hi:0.8},  y:{from:'dx',k:0.006,lo:-1.2,hi:1.2}},
+    body:     {x:{from:'dy',k:0.005,lo:-0.6,hi:0.6},  y:{from:'dx',k:0.005,lo:-0.8,hi:0.8}},
+    leftArm:  {x:{from:'dy',k:0.007,lo:-1.6,hi:1.6},  z:{from:'dx',k:0.007, lo:-0.2,hi:1.4}},
+    rightArm: {x:{from:'dy',k:0.007,lo:-1.6,hi:1.6},  z:{from:'dx',k:-0.007,lo:-1.4,hi:0.2}},
+    leftLeg:  {x:{from:'dy',k:0.006,lo:-1.2,hi:1.2},  z:{from:'dx',k:0.006, lo:-0.2,hi:0.7}},
+    rightLeg: {x:{from:'dy',k:0.006,lo:-1.2,hi:1.2},  z:{from:'dx',k:-0.006,lo:-0.7,hi:0.2}},
+  };
+  const POSE_K=110, POSE_C=9;            // 復帰バネ（低減衰＝びよん）
+  let poseMode=false, grabbed=null, grabStart=null, lastCtrl=0;
+  const poseCur={}, poseTarget={}, poseFixed={};
+  POSE_LIMBS.forEach(n=>{ poseCur[n]={x:{p:0,v:0},y:{p:0,v:0},z:{p:0,v:0}}; poseTarget[n]={x:0,y:0,z:0}; poseFixed[n]=false; });
+
+  function pickPart(cx,cy){
+    const sk=viewer.playerObject&&viewer.playerObject.skin; if(!sk)return null;
+    const cam=viewer.camera, rect=wrap.getBoundingClientRect();
+    let best=null,bd=1e9;
+    POSE_LIMBS.forEach(n=>{ const p=sk[n]; if(!p)return; const s=POSE_SAMPLE[n];
+      const v=cam.position.clone(); v.set(s[0],s[1],s[2]); p.localToWorld(v); v.project(cam);
+      const sx=rect.left+(v.x*0.5+0.5)*rect.width, sy=rect.top+(-v.y*0.5+0.5)*rect.height;
+      const d=Math.hypot(sx-cx,sy-cy); if(d<bd){bd=d;best=n;}
+    });
+    return bd<80?best:null;
+  }
+  function applyPoseFrame(sk, dt){
+    POSE_LIMBS.forEach(n=>{
+      const p = n==='head'? sk.head : sk[n]; if(!p)return;
+      const c=poseCur[n], isGrab=(grabbed===n), hold=isGrab||poseFixed[n];
+      ['x','y','z'].forEach(ax=>{
+        const target = hold ? poseTarget[n][ax] : 0;
+        if(isGrab){ c[ax].p += (target-c[ax].p)*Math.min(1,dt*30); c[ax].v=0; }   // 掴み中は素早く追従
+        else { c[ax].v += (POSE_K*(target-c[ax].p) - POSE_C*c[ax].v)*dt; c[ax].p += c[ax].v*dt; }  // 保持/0へびよん
+      });
+      if(n==='head'){ sk.head.rotation.y=gazeYaw+c.y.p; sk.head.rotation.x=gazePitch+c.x.p; }
+      else { p.rotation.x+=c.x.p; p.rotation.y+=c.y.p; p.rotation.z+=c.z.p;
+             applied[n].x=c.x.p; applied[n].y=c.y.p; applied[n].z=c.z.p; }
+    });
+  }
+  function setGrabTarget(ev){
+    if(!grabbed)return; const dx=ev.clientX-grabStart.x, dy=ev.clientY-grabStart.y;
+    const map=POSE_MAP[grabbed], base=grabStart.base;
+    ['x','y','z'].forEach(ax=>{ const m=map[ax]; if(!m)return;
+      const d=(m.from==='dx')?dx:dy; poseTarget[grabbed][ax]=clampN(base[ax]+d*m.k, m.lo, m.hi);
+    });
+  }
+  function releaseAllPoses(){ POSE_LIMBS.forEach(n=>{ poseFixed[n]=false; poseTarget[n]={x:0,y:0,z:0}; }); }
+  function setPoseMode(on){
+    poseMode=on;
+    if(poseBtn){ poseBtn.classList.toggle('on',on); poseBtn.setAttribute('aria-pressed',on?'true':'false'); }
+    wrap.classList.toggle('pose',on);
+    if(on){ cancelEase(); viewer.autoRotate=false; viewer.autoRotateSpeed=0; }   // 掴みの邪魔なので自動回転を止める
+    else { grabbed=null; viewer.controls.enabled=true; wrap.classList.remove('grabbing');
+           if(autoRotateWanted) resumeAutoRotateEased(); }
+  }
+  // capture段のpointerdownで拾い、部位を掴んだ時だけ OrbitControls(pointer系)を止める（空きはオービットに任せる）
+  wrap.addEventListener('pointerdown',ev=>{
+    if(!poseMode||ev.button!==0)return;
+    const part=pickPart(ev.clientX,ev.clientY); if(!part)return;
+    grabbed=part; grabStart={x:ev.clientX,y:ev.clientY,base:{...poseTarget[part]}};
+    poseFixed[part]=true; viewer.controls.enabled=false; wrap.classList.add('grabbing');
+    try{ wrap.setPointerCapture(ev.pointerId); }catch(_){}
+    ev.preventDefault(); ev.stopImmediatePropagation();
+  }, true);
+  window.addEventListener('pointermove',ev=>{ if(grabbed) setGrabTarget(ev); });
+  window.addEventListener('pointerup',ev=>{
+    if(!grabbed)return; poseFixed[grabbed]= !!ev.shiftKey;   // Shiftで固定 / 通常はびよん復帰
+    grabbed=null; viewer.controls.enabled=true; wrap.classList.remove('grabbing');
+  });
+  if(poseBtn) poseBtn.addEventListener('click',()=>setPoseMode(!poseMode));
+  document.addEventListener('keydown',ev=>{               // Ctrl 二度押しでポーズ全解除（びよん）
+    if(ev.key==='Control'){ const t=performance.now(); if(t-lastCtrl<400){ releaseAllPoses(); lastCtrl=0; } else lastCtrl=t; }
+  });
+
   viewer.render=(base=>()=>{
     const now=performance.now();
     const dt=renderT?Math.min((now-renderT)/1000,0.05):0; renderT=now;
@@ -653,7 +735,11 @@ select:hover{border-color:var(--line-strong)}
     const armMod ={cMul:1,           cfMul:1, prop:DRV.prop};
     const legMod ={cMul:m.legC,      cfMul:m.legCf, prop:m.legProp};
     const sk=viewer.playerObject&&viewer.playerObject.skin;
-    if(sk && dt>0 && now>=physicsSettleUntil){
+    if(sk && dt>0 && now>=physicsSettleUntil && poseMode){
+      // ポーズ/インスペクト：慣性とは排他。掴んだ部位を動かし、離すと固定 or びよん復帰。
+      applyPoseFrame(sk, dt);
+      applyPositionFollow(sk, false);
+    } else if(sk && dt>0 && now>=physicsSettleUntil){
       // 体を先に積分 → そのオフセットを頭・腕・脚へ伝播（連鎖スプリングボーン）
       if(sk.body) applyJoint(sk.body, JOINT.body, sp.body, applied.body, dY, dP, 0, 0, spin2, bodyMod, dt);
       const bx=sp.body.x.p, by=sp.body.y.p;
