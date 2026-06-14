@@ -13,6 +13,12 @@ const APP_DIR = app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__
 const DOWNLOADS_DIR = path.dirname(APP_DIR);          // 親フォルダ = ダウンロード想定
 const USERDATA = path.join(APP_DIR, 'skin-gallery-userdata.json');
 
+// TODO(3): namemc ブラウズ→DLしたスキンを APP_DIR(スキンdir)へ投入（Electron専用）。
+//   ・<iframe>はX-Frame-Optionsで不可 → <webview>/WebContentsView で ja.namemc.com を埋め込む。
+//   ・session.webRequest.onBeforeRequest で広告ドメインをネイティブブロック（拡張不要・既定OFF/任意トグル）。
+//   ・session.on('will-download') をフックして保存先を APP_DIR に固定し、完了後 scanSkins で一覧更新。
+// TODO(4): README/LICENSE 整備（公開準備）。
+
 let win = null;
 
 function createWindow() {

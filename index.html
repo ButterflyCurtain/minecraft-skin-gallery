@@ -778,6 +778,10 @@ select:hover{border-color:var(--line-strong)}
   const ANIMS={walk:()=>new skinview3d.WalkingAnimation(),run:()=>new skinview3d.RunningAnimation(),
     idle:()=>makeIdle(),wave:()=>new skinview3d.WaveAnimation(),
     fly:()=>new skinview3d.FlyingAnimation(),none:()=>null};
+  // TODO(2): 動作切替のクロスフェード。今は applyAnim で即差し替えのため、A→飛ぶ等は飛ぶ側の
+  //   progressランプで入りだけ滑らか・逆や他の切替はスナップする。切替時に直前ポーズを凍結し、
+  //   新アニメを数百msで重み付き補間（両方向）して滑らかにつなぐ。
+  // TODO(4): 公開準備として README 更新 / LICENSE(MIT) 追加。
   function applyAnim(){const f=ANIMS[animSel.value]||ANIMS.walk; viewer.animation=f(); if(viewer.animation)viewer.animation.speed=1;}
   applyAnim();
 
