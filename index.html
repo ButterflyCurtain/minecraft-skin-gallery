@@ -2628,7 +2628,8 @@
                     if (sk && dt > 0 && now >= physicsSettleUntil && poseMode) {
                         // ポーズ/インスペクト：慣性とは排他。掴んだ部位を動かし、離すと固定 or びよん復帰。
                         applyPoseFrame(sk, dt);
-                        applyPositionFollow(sk, true, bodyPivotY); // 体を動かすと腕・脚・頭も追従。ボディ上下半分で支点可変
+                        // ポーズ中はフル追従：ボディ下部(腰)を引くと足の上も付いてくる。ボディ上下半分で支点可変。
+                        applyPositionFollow(sk, true, bodyPivotY, true);
                     } else if (sk && dt > 0 && now >= physicsSettleUntil) {
                         // 体を先に積分 → そのオフセットを頭・腕・脚へ伝播（連鎖スプリングボーン）
                         if (sk.body)
