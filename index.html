@@ -1303,7 +1303,7 @@
                             <div class="set-k">ポーズの固定操作</div>
                             <div class="set-d">
                                 右クリック式＝ドラッグ調整中に右クリックで固定/解除・空きで右ダブルクリックで全解除。
-                                Shift式＝Shiftを押しながら離すと固定（右クリック解除も併用可）。
+                                Shift式＝Shift押しながら離すと固定・グラブ中Shift単押しで解除・Ctrl二度押しで全解除（右クリック解除も可）。
                             </div>
                         </div>
                         <div
@@ -1521,8 +1521,8 @@
                         "Match background to the skin (dark → faint gray / light → black / mixed → dark gray).",
                     自動: "Auto",
                     ポーズの固定操作: "Pose fix control",
-                    "右クリック式＝ドラッグ調整中に右クリックで固定/解除・空きで右ダブルクリックで全解除。 Shift式＝Shiftを押しながら離すと固定（右クリック解除も併用可）。":
-                        "Right-click: fix/release a part while adjusting; double right-click empty to release all. Shift: fix on release while holding Shift.",
+                    "右クリック式＝ドラッグ調整中に右クリックで固定/解除・空きで右ダブルクリックで全解除。 Shift式＝Shift押しながら離すと固定・グラブ中Shift単押しで解除・Ctrl二度押しで全解除（右クリック解除も可）。":
+                        "Right-click: fix/release a part while adjusting; double right-click empty to release all. Shift: hold Shift on release to fix; tap Shift while grabbing to release; double-tap Ctrl to release all (right-click release also works).",
                     右クリック式: "Right-click",
                     "Shift式": "Shift",
                     // namemc
@@ -2178,9 +2178,9 @@
                 // 追従強度（1=接合点に完全追従 / <1=控えめにスライド）。腕は滑りが目立つので弱め。
                 // 位置追従の強さ。脚は床に残したいので弱め（=部分接地・少し滑る摩擦感）。
                 const FOLLOW_K = {
-                    head: 0.8,
-                    leftArm: 0.55,
-                    rightArm: 0.55,
+                    head: 0.92,
+                    leftArm: 0.75,
+                    rightArm: 0.75,
                     leftLeg: 0.35,
                     rightLeg: 0.35,
                 };
@@ -2558,6 +2558,22 @@
                 // ポーズ中はブラウザの右クリックメニューを抑止
                 wrap.addEventListener("contextmenu", (ev) => {
                     if (poseMode) ev.preventDefault();
+                });
+                // Shift方式の固定操作：Ctrl二回押しで全解除 / グラブ中にShift単押しでその部位の固定を解除
+                // （Shiftを押しながらマウスを離す＝固定。右クリック式は空き右ダブルクリックで全解除）
+                let lastCtrlPress = 0;
+                document.addEventListener("keydown", (ev) => {
+                    if (!poseMode || settings.poseControl !== "shift") return;
+                    if (ev.key === "Control") {
+                        const t = performance.now();
+                        if (t - lastCtrlPress < 400) {
+                            lastCtrlPress = 0;
+                            requestReleaseAll();
+                        } else lastCtrlPress = t;
+                    } else if (ev.key === "Shift" && !ev.repeat && grabbed) {
+                        // 掴んでいる部位の固定を解除（このまま離せば0へ戻る）
+                        poseFixed[grabbed] = false;
+                    }
                 });
                 if (poseBtn)
                     poseBtn.addEventListener("click", () =>
