@@ -4039,6 +4039,11 @@
                                     canvas: _pvCanvas,
                                     width: 288,
                                     height: 384,
+                                    // pixelRatio を固定しないと既定 "match-device" で
+                                    // window.devicePixelRatio（例:125%表示=1.25）が掛かり、
+                                    // バッファが 360x480 等になって launcher.js の 288x384 検査で
+                                    // 全件 invalid 弾き＝書き込み不可になる。必ず 1 に固定する。
+                                    pixelRatio: 1,
                                     preserveDrawingBuffer: true,
                                 });
                                 _pvViewer.fov = 40;
@@ -4058,9 +4063,37 @@
                                             return;
                                         }
                                         try {
-                                            resolve(
-                                                _pvCanvas.toDataURL("image/png"),
-                                            );
+                                            // 念のため最終出力を 288x384 へ正規化する。
+                                            // pixelRatio:1 を指定済みだが、環境差でバッファが
+                                            // ズレても launcher 側の寸法検査で弾かれないよう、
+                                            // 物理サイズ固定のキャンバスへ描き直してから出力。
+                                            if (
+                                                _pvCanvas.width === 288 &&
+                                                _pvCanvas.height === 384
+                                            ) {
+                                                resolve(
+                                                    _pvCanvas.toDataURL(
+                                                        "image/png",
+                                                    ),
+                                                );
+                                            } else {
+                                                const out =
+                                                    document.createElement(
+                                                        "canvas",
+                                                    );
+                                                out.width = 288;
+                                                out.height = 384;
+                                                out.getContext("2d").drawImage(
+                                                    _pvCanvas,
+                                                    0,
+                                                    0,
+                                                    288,
+                                                    384,
+                                                );
+                                                resolve(
+                                                    out.toDataURL("image/png"),
+                                                );
+                                            }
                                         } catch (_) {
                                             resolve(null);
                                         }
